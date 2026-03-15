@@ -10,6 +10,7 @@ export type UserRole = 'ANALYST' | 'SUPERVISOR'
 export type ContextType = 'CASH' | 'SECURITIES'
 export type SignOffStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
 export type WriteOffStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
+export type CaseStatus = 'OPEN' | 'IN_PROGRESS' | 'PENDING_EXTERNAL' | 'ESCALATED' | 'RESOLVED' | 'CLOSED'
 export type SeverityLevel = 'GREEN' | 'AMBER' | 'RED'
 
 // ─── Reconciliation Context ──────────────────────────────────
@@ -131,6 +132,33 @@ export interface WriteOffRequest {
   approvedBy: string | null
   approvedAt: string | null
   comments: string
+}
+
+// ─── Case ─────────────────────────────────────────────────
+
+export interface Case {
+  id: string
+  exceptionId: string
+  contextId: string
+  item: ReconItem
+  status: CaseStatus
+  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'
+  assignedTo: string
+  createdBy: string
+  createdAt: string
+  updatedAt: string
+  notes: AuditEvent[]
+  amount: number
+}
+
+// ─── Audit Event ──────────────────────────────────────────
+
+export interface AuditEvent {
+  id: string
+  timestamp: string
+  user: string
+  action: string
+  detail: string
 }
 
 // ─── User / Team ─────────────────────────────────────────────

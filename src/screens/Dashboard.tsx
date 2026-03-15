@@ -1,4 +1,4 @@
-import type React from 'react'
+import React from 'react'
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -13,8 +13,9 @@ import {
   Filler,
 } from 'chart.js'
 import { Line, Bar, Doughnut } from 'react-chartjs-2'
+import { useNavigate } from 'react-router-dom'
 import { useReconStore } from '../store/reconStore'
-import type { DashboardKPIs, ReconContext, UserRole, BalancePool, WriteOffRequest } from '../data/types'
+import type { AuditEvent, BalancePool, DashboardKPIs, Exception, ReconContext, TeamMember, UserRole, WriteOffRequest } from '../data/types'
 
 ChartJS.register(
   CategoryScale,
@@ -347,21 +348,54 @@ function ContextHealthRow({ contexts }: { contexts: ReconContext[] }) {
   )
 }
 
+// ─── Priority dot color ───────────────────────────────────────
+
+function priorityColor(priority: Exception['priority']): string {
+  if (priority === 'CRITICAL') return COLOR.red
+  if (priority === 'HIGH') return COLOR.amber
+  if (priority === 'MEDIUM') return COLOR.blue
+  return COLOR.textMuted
+}
+
+// ─── SLA color ────────────────────────────────────────────────
+
+function slaColor(pct: number): string {
+  if (pct >= 95) return COLOR.green
+  if (pct >= 85) return COLOR.amber
+  return COLOR.red
+}
+
 // ─── Role Banner ──────────────────────────────────────────────
 
 interface RoleBannerProps {
   activeRole: UserRole
   balancePools: BalancePool[]
   writeOffs: WriteOffRequest[]
+  exceptions: Exception[]
+  team: TeamMember[]
 }
 
-function RoleBanner({ activeRole, balancePools, writeOffs }: RoleBannerProps) {
+function RoleBanner({ activeRole, balancePools, writeOffs, exceptions, team }: RoleBannerProps) {
+  const navigate = useNavigate()
+
   if (activeRole === 'ANALYST') {
+    const ANALYST_NAME = 'Sarah Chen'
+    const myExceptions = exceptions.filter(e => e.assignedTo === ANALYST_NAME)
+    const analystMember =
+      team.find(t => t.name === ANALYST_NAME) ??
+      team.find(t => t.role === 'ANALYST')
+
+    const itemsAssigned = myExceptions.length
+    const avgResolution = analystMember ? `${analystMember.avgResolutionTime.toFixed(1)}h` : '—'
+    const slaCompliance = analystMember ? `${analystMember.slaCompliance.toFixed(1)}%` : '—'
+
     const items = [
-      { label: 'Items Assigned', value: '8', color: COLOR.blue },
-      { label: 'Avg Resolution', value: '2.4h', color: COLOR.cyan },
-      { label: 'SLA Compliance', value: '96.5%', color: COLOR.green },
+      { label: 'Items Assigned', value: itemsAssigned.toString(), color: COLOR.blue },
+      { label: 'Avg Resolution', value: avgResolution, color: COLOR.cyan },
+      { label: 'SLA Compliance', value: slaCompliance, color: COLOR.green },
     ]
+
+    const previewExceptions = myExceptions.slice(0, 5)
 
     return (
       <div
@@ -420,6 +454,71 @@ function RoleBanner({ activeRole, balancePools, writeOffs }: RoleBannerProps) {
             ))}
           </div>
         </div>
+
+        {/* Mini exception list */}
+        {previewExceptions.length > 0 && (
+          <div style={{ marginTop: 16, borderTop: `1px solid ${COLOR.border}`, paddingTop: 12 }}>
+            <p style={{ margin: '0 0 8px', fontSize: 10, fontWeight: 600, color: COLOR.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+              My Assigned Exceptions
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {previewExceptions.map(exc => (
+                <div
+                  key={exc.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => navigate('/exceptions')}
+                  onKeyDown={e => e.key === 'Enter' && navigate('/exceptions')}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '16px 1fr 60px 90px',
+                    gap: 10,
+                    alignItems: 'center',
+                    padding: '6px 10px',
+                    borderRadius: 7,
+                    background: COLOR.surface,
+                    border: `1px solid ${COLOR.border}`,
+                    cursor: 'pointer',
+                    transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={e => ((e.currentTarget as HTMLDivElement).style.background = COLOR.surfaceHover)}
+                  onMouseLeave={e => ((e.currentTarget as HTMLDivElement).style.background = COLOR.surface)}
+                >
+                  <div
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: '50%',
+                      background: priorityColor(exc.priority),
+                      flexShrink: 0,
+                    }}
+                    title={exc.priority}
+                  />
+                  <span style={{ fontSize: 12, color: COLOR.textPrimary, fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {exc.item.reference}
+                  </span>
+                  <span style={{ fontSize: 11, color: COLOR.textMuted, textAlign: 'right' }}>
+                    {exc.item.age}d
+                  </span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: COLOR.textSecondary, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                    {usd.format(Math.abs(exc.item.amount))}
+                  </span>
+                </div>
+              ))}
+            </div>
+            {myExceptions.length > 5 && (
+              <p
+                role="button"
+                tabIndex={0}
+                onClick={() => navigate('/exceptions')}
+                onKeyDown={e => e.key === 'Enter' && navigate('/exceptions')}
+                style={{ margin: '8px 0 0', fontSize: 11, color: COLOR.blue, cursor: 'pointer', textDecoration: 'underline' }}
+              >
+                View all {myExceptions.length} exceptions
+              </p>
+            )}
+          </div>
+        )}
       </div>
     )
   }
@@ -427,9 +526,10 @@ function RoleBanner({ activeRole, balancePools, writeOffs }: RoleBannerProps) {
   // SUPERVISOR view
   const pendingSignOffs = balancePools.filter(p => p.signOffStatus === 'PENDING').length
   const pendingWriteOffs = writeOffs.filter(w => w.status === 'PENDING').length
+  const activeAnalysts = team.filter(t => t.role === 'ANALYST').length
 
   const items = [
-    { label: 'Active Analysts', value: '3', color: COLOR.blue },
+    { label: 'Active Analysts', value: activeAnalysts.toString(), color: COLOR.blue },
     { label: 'Pending Sign-offs', value: pendingSignOffs.toString(), color: pendingSignOffs > 0 ? COLOR.amber : COLOR.green },
     { label: 'Write-offs Pending', value: pendingWriteOffs.toString(), color: pendingWriteOffs > 0 ? COLOR.red : COLOR.green },
   ]
@@ -491,6 +591,67 @@ function RoleBanner({ activeRole, balancePools, writeOffs }: RoleBannerProps) {
           ))}
         </div>
       </div>
+
+      {/* Team performance table */}
+      {team.length > 0 && (
+        <div style={{ marginTop: 16, borderTop: `1px solid ${COLOR.border}`, paddingTop: 12 }}>
+          <p style={{ margin: '0 0 8px', fontSize: 10, fontWeight: 600, color: COLOR.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
+            Team Performance
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px 100px 80px', gap: 0 }}>
+            {/* Table header */}
+            {['Name', 'Items Resolved', 'Avg Time', 'SLA %'].map(h => (
+              <span
+                key={h}
+                style={{
+                  fontSize: 10,
+                  fontWeight: 600,
+                  color: COLOR.textMuted,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.07em',
+                  padding: '0 8px 6px',
+                  textAlign: h === 'Name' ? 'left' : 'right',
+                  borderBottom: `1px solid ${COLOR.border}`,
+                }}
+              >
+                {h}
+              </span>
+            ))}
+            {/* Table rows */}
+            {team.map(member => {
+              const sc = slaColor(member.slaCompliance)
+              return (
+                <React.Fragment key={member.id}>
+                  <span style={{ fontSize: 12, color: COLOR.textPrimary, padding: '7px 8px', borderBottom: `1px solid ${COLOR.border}` }}>
+                    {member.name}
+                    <span
+                      style={{
+                        marginLeft: 6,
+                        fontSize: 10,
+                        color: COLOR.textMuted,
+                        background: COLOR.surface,
+                        padding: '1px 5px',
+                        borderRadius: 4,
+                      }}
+                    >
+                      {member.role}
+                    </span>
+                  </span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: COLOR.textSecondary, padding: '7px 8px', textAlign: 'right', borderBottom: `1px solid ${COLOR.border}`, fontVariantNumeric: 'tabular-nums' }}>
+                    {member.itemsResolvedToday}
+                  </span>
+                  <span style={{ fontSize: 12, color: COLOR.textSecondary, padding: '7px 8px', textAlign: 'right', borderBottom: `1px solid ${COLOR.border}`, fontVariantNumeric: 'tabular-nums' }}>
+                    {member.avgResolutionTime.toFixed(1)}h
+                  </span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: sc, padding: '7px 8px', textAlign: 'right', borderBottom: `1px solid ${COLOR.border}`, fontVariantNumeric: 'tabular-nums' }}>
+                    {member.slaCompliance.toFixed(1)}%
+                  </span>
+                </React.Fragment>
+              )
+            })}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -503,6 +664,9 @@ export default function Dashboard() {
   const activeRole: UserRole = useReconStore(s => s.activeRole)
   const balancePools: BalancePool[] = useReconStore(s => s.balancePools)
   const writeOffs: WriteOffRequest[] = useReconStore(s => s.writeOffs)
+  const exceptions: Exception[] = useReconStore(s => s.exceptions)
+  const team: TeamMember[] = useReconStore(s => s.team)
+  const auditTrail: AuditEvent[] = useReconStore(s => s.auditTrail)
 
   // Guard — store not yet initialized
   if (!kpis || kpis.overallMatchRate === undefined) {
@@ -797,7 +961,13 @@ export default function Dashboard() {
       </div>
 
       {/* ── Role Banner ───────────────────────────────────── */}
-      <RoleBanner activeRole={activeRole} balancePools={balancePools} writeOffs={writeOffs} />
+      <RoleBanner
+        activeRole={activeRole}
+        balancePools={balancePools}
+        writeOffs={writeOffs}
+        exceptions={exceptions}
+        team={team}
+      />
 
       {/* ── Top KPI Stat Cards ─────────────────────────────── */}
       <div
@@ -1011,11 +1181,22 @@ export default function Dashboard() {
                 </p>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
-                  {[
-                    { label: 'SLA Breached', value: Math.floor(exceptionCount * 0.12), color: COLOR.red },
-                    { label: 'Due Today', value: Math.floor(exceptionCount * 0.19), color: COLOR.amber },
-                    { label: 'Within SLA', value: Math.floor(exceptionCount * 0.69), color: COLOR.green },
-                  ].map(item => (
+                  {(() => {
+                    const now = new Date()
+                    const slaBreached = exceptions.filter(e => e.slaBreach).length
+                    const dueToday = exceptions.filter(e => {
+                      if (e.slaBreach) return false
+                      const deadline = new Date(e.slaDeadline)
+                      const hoursLeft = (deadline.getTime() - now.getTime()) / (1000 * 60 * 60)
+                      return hoursLeft >= 0 && hoursLeft < 24
+                    }).length
+                    const withinSla = exceptionCount - slaBreached - dueToday
+                    return [
+                      { label: 'SLA Breached', value: slaBreached, color: COLOR.red },
+                      { label: 'Due Today', value: dueToday, color: COLOR.amber },
+                      { label: 'Within SLA', value: withinSla > 0 ? withinSla : 0, color: COLOR.green },
+                    ]
+                  })().map(item => (
                     <div
                       key={item.label}
                       style={{
@@ -1436,6 +1617,101 @@ export default function Dashboard() {
           </div>
         </ChartCard>
       </div>
+
+      {/* ── Recent Activity ────────────────────────────────── */}
+      {auditTrail.length > 0 && (
+        <div
+          style={{
+            marginTop: 20,
+            background: COLOR.card,
+            border: `1px solid ${COLOR.border}`,
+            borderRadius: 12,
+            padding: '20px 24px',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
+            boxShadow: '0 1px 0 0 rgba(255,255,255,0.06) inset, 0 4px 16px rgba(0,0,0,0.2)',
+          }}
+        >
+          <p
+            style={{
+              margin: '0 0 14px',
+              fontSize: 14,
+              fontWeight: 600,
+              color: COLOR.textPrimary,
+              letterSpacing: '-0.01em',
+            }}
+          >
+            Recent Activity
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            {auditTrail.slice(0, 10).map((event, idx) => (
+              <div
+                key={event.id}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '160px 130px 170px 1fr',
+                  gap: 12,
+                  alignItems: 'start',
+                  padding: '8px 0',
+                  borderBottom: idx < Math.min(auditTrail.length, 10) - 1 ? `1px solid ${COLOR.border}` : 'none',
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                    fontSize: 11,
+                    color: COLOR.textMuted,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {new Date(event.timestamp).toLocaleString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false,
+                  })}
+                </span>
+                <span
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: COLOR.textSecondary,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {event.user}
+                </span>
+                <span
+                  style={{
+                    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                    fontSize: 11,
+                    color: COLOR.cyan,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {event.action}
+                </span>
+                <span
+                  style={{
+                    fontSize: 12,
+                    color: COLOR.textMuted,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {event.detail}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Spinner keyframe — injected as a style tag */}
       <style>{`

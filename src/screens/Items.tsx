@@ -29,6 +29,8 @@ const STATUS_BG: Record<ItemStatus, string> = {
   WRITE_OFF: 'rgba(148,163,184,0.15)',
 }
 
+type SortField = 'valueDate' | 'reference' | 'amount' | 'age'
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function formatCurrency(amount: number, currency: string): string {
@@ -45,6 +47,23 @@ function formatDate(iso: string): string {
     month: 'short',
     day: '2-digit',
     year: 'numeric',
+  })
+}
+
+function sortItems(items: ReconItem[], field: SortField | null, dir: 'asc' | 'desc'): ReconItem[] {
+  if (!field) return items
+  return [...items].sort((a, b) => {
+    let cmp = 0
+    if (field === 'valueDate') {
+      cmp = a.valueDate.localeCompare(b.valueDate)
+    } else if (field === 'reference') {
+      cmp = a.reference.localeCompare(b.reference)
+    } else if (field === 'amount') {
+      cmp = a.amount - b.amount
+    } else if (field === 'age') {
+      cmp = a.age - b.age
+    }
+    return dir === 'asc' ? cmp : -cmp
   })
 }
 
@@ -263,6 +282,213 @@ function ExpandedMatchDetail({
   )
 }
 
+// ─── Manual Match Comparison Panel ───────────────────────────────────────────
+
+interface ManualMatchPanelProps {
+  internalItem: ReconItem
+  externalItem: ReconItem
+  comment: string
+  onCommentChange: (v: string) => void
+  onConfirm: () => void
+  onCancel: () => void
+}
+
+function ManualMatchPanel({
+  internalItem,
+  externalItem,
+  comment,
+  onCommentChange,
+  onConfirm,
+  onCancel,
+}: ManualMatchPanelProps) {
+  const fields: { label: string; internalVal: string; externalVal: string }[] = [
+    {
+      label: 'Reference',
+      internalVal: internalItem.reference,
+      externalVal: externalItem.reference,
+    },
+    {
+      label: 'Value Date',
+      internalVal: formatDate(internalItem.valueDate),
+      externalVal: formatDate(externalItem.valueDate),
+    },
+    {
+      label: 'Amount',
+      internalVal: formatCurrency(internalItem.amount, internalItem.currency),
+      externalVal: formatCurrency(externalItem.amount, externalItem.currency),
+    },
+    {
+      label: 'Currency',
+      internalVal: internalItem.currency,
+      externalVal: externalItem.currency,
+    },
+    {
+      label: 'Counterparty',
+      internalVal: internalItem.counterparty,
+      externalVal: externalItem.counterparty,
+    },
+  ]
+
+  return (
+    <div
+      style={{
+        marginTop: 16,
+        background: 'rgba(15,17,23,0.97)',
+        border: '1px solid rgba(129,140,248,0.4)',
+        borderRadius: 12,
+        padding: 20,
+      }}
+    >
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <span
+          style={{
+            fontSize: 12,
+            fontWeight: 700,
+            color: '#818cf8',
+            textTransform: 'uppercase',
+            letterSpacing: '0.06em',
+          }}
+        >
+          Manual Match — Confirm Pairing
+        </span>
+        <span
+          style={{
+            fontSize: 11,
+            color: '#64748b',
+            marginLeft: 4,
+          }}
+        >
+          Review the differences before confirming
+        </span>
+      </div>
+
+      {/* Column labels */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '90px 1fr 1fr',
+          gap: 8,
+          marginBottom: 6,
+        }}
+      >
+        <div />
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#3b82f6', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          Internal Ledger
+        </div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          Bank Statement
+        </div>
+      </div>
+
+      {/* Field rows */}
+      {fields.map(f => {
+        const isDiff = f.internalVal !== f.externalVal
+        return (
+          <div
+            key={f.label}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '90px 1fr 1fr',
+              gap: 8,
+              marginBottom: 8,
+              alignItems: 'center',
+            }}
+          >
+            <span style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              {f.label}
+            </span>
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 500,
+                color: isDiff ? '#f59e0b' : '#f1f5f9',
+                background: isDiff ? 'rgba(245,158,11,0.1)' : 'transparent',
+                border: isDiff ? '1px solid rgba(245,158,11,0.3)' : '1px solid transparent',
+                borderRadius: 5,
+                padding: '3px 8px',
+              }}
+            >
+              {f.internalVal}
+            </span>
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 500,
+                color: isDiff ? '#f59e0b' : '#f1f5f9',
+                background: isDiff ? 'rgba(245,158,11,0.1)' : 'transparent',
+                border: isDiff ? '1px solid rgba(245,158,11,0.3)' : '1px solid transparent',
+                borderRadius: 5,
+                padding: '3px 8px',
+              }}
+            >
+              {f.externalVal}
+            </span>
+          </div>
+        )
+      })}
+
+      {/* Comment / justification */}
+      <div style={{ marginTop: 14 }}>
+        <textarea
+          value={comment}
+          onChange={e => onCommentChange(e.target.value)}
+          placeholder="Match justification..."
+          rows={3}
+          style={{
+            width: '100%',
+            background: 'rgba(26,29,41,0.9)',
+            border: '1px solid rgba(129,140,248,0.3)',
+            borderRadius: 8,
+            color: '#f1f5f9',
+            fontSize: 13,
+            padding: '10px 12px',
+            outline: 'none',
+            resize: 'vertical',
+            boxSizing: 'border-box',
+            fontFamily: 'inherit',
+          }}
+        />
+      </div>
+
+      {/* Action buttons */}
+      <div style={{ display: 'flex', gap: 10, marginTop: 12, justifyContent: 'flex-end' }}>
+        <button
+          onClick={onCancel}
+          style={{
+            padding: '8px 20px',
+            borderRadius: 8,
+            border: '1px solid rgba(255,255,255,0.12)',
+            background: 'transparent',
+            color: '#94a3b8',
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: 'pointer',
+          }}
+        >
+          Cancel
+        </button>
+        <button
+          onClick={onConfirm}
+          style={{
+            padding: '8px 20px',
+            borderRadius: 8,
+            border: 'none',
+            background: '#818cf8',
+            color: '#fff',
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: 'pointer',
+            letterSpacing: '0.02em',
+          }}
+        >
+          Create Match
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─── Item Row ────────────────────────────────────────────────────────────────
 
 interface ItemRowProps {
@@ -273,26 +499,63 @@ interface ItemRowProps {
   onToggle: () => void
   onAccept: () => void
   onReject: () => void
+  // Manual match mode props
+  manualMatchMode: boolean
+  isSelected: boolean
+  onManualSelect: () => void
 }
 
-function ItemRow({ item, index, isExpanded, matchedPartner, onToggle, onAccept: _onAccept, onReject: _onReject }: ItemRowProps) {
+function ItemRow({
+  item,
+  index,
+  isExpanded,
+  matchedPartner,
+  onToggle,
+  onAccept: _onAccept,
+  onReject: _onReject,
+  manualMatchMode,
+  isSelected,
+  onManualSelect,
+}: ItemRowProps) {
   const isNegative = item.amount < 0
-  const canExpand = !!matchedPartner
+  const canExpand = !!matchedPartner && !manualMatchMode
+  const isSelectableInMode = manualMatchMode && item.status === 'UNMATCHED'
+
+  const handleClick = () => {
+    if (manualMatchMode) {
+      if (isSelectableInMode) onManualSelect()
+    } else if (canExpand) {
+      onToggle()
+    }
+  }
+
+  const baseBg = isSelected
+    ? 'rgba(129, 140, 248, 0.08)'
+    : index % 2 === 0
+    ? 'transparent'
+    : 'rgba(255,255,255,0.02)'
+
+  const borderStyle = isSelected ? '2px solid #818cf8' : undefined
 
   return (
     <tr
-      onClick={canExpand ? onToggle : undefined}
+      onClick={handleClick}
       style={{
-        background: index % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)',
-        cursor: canExpand ? 'pointer' : 'default',
+        background: baseBg,
+        cursor: isSelectableInMode || canExpand ? 'pointer' : 'default',
         transition: 'background 0.15s',
+        outline: borderStyle,
+        outlineOffset: -2,
+        opacity: manualMatchMode && item.status !== 'UNMATCHED' ? 0.45 : 1,
       }}
       onMouseEnter={e => {
-        if (canExpand) (e.currentTarget as HTMLTableRowElement).style.background = 'rgba(255,255,255,0.05)'
+        if (isSelectableInMode || canExpand)
+          (e.currentTarget as HTMLTableRowElement).style.background = isSelected
+            ? 'rgba(129,140,248,0.14)'
+            : 'rgba(255,255,255,0.05)'
       }}
       onMouseLeave={e => {
-        (e.currentTarget as HTMLTableRowElement).style.background =
-          index % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)'
+        (e.currentTarget as HTMLTableRowElement).style.background = baseBg
       }}
     >
       <td style={{ padding: '10px 12px', fontSize: 12, color: '#94a3b8', whiteSpace: 'nowrap' }}>
@@ -327,6 +590,46 @@ function ItemRow({ item, index, isExpanded, matchedPartner, onToggle, onAccept: 
   )
 }
 
+// ─── Sortable Column Header ───────────────────────────────────────────────────
+
+interface SortableThProps {
+  label: string
+  field: SortField
+  currentField: SortField | null
+  currentDir: 'asc' | 'desc'
+  onSort: (field: SortField) => void
+  style?: React.CSSProperties
+}
+
+function SortableTh({ label, field, currentField, currentDir, onSort, style }: SortableThProps) {
+  const isActive = currentField === field
+  return (
+    <th
+      onClick={() => onSort(field)}
+      style={{
+        padding: '10px 12px',
+        fontSize: 11,
+        fontWeight: 700,
+        color: isActive ? '#818cf8' : '#64748b',
+        textTransform: 'uppercase',
+        letterSpacing: '0.06em',
+        borderBottom: '1px solid rgba(255,255,255,0.08)',
+        whiteSpace: 'nowrap',
+        cursor: 'pointer',
+        userSelect: 'none',
+        ...style,
+      }}
+    >
+      {label}
+      {isActive && (
+        <span style={{ marginLeft: 4, fontSize: 10 }}>
+          {currentDir === 'asc' ? '▲' : '▼'}
+        </span>
+      )}
+    </th>
+  )
+}
+
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
 export default function Items() {
@@ -336,10 +639,21 @@ export default function Items() {
   const setActiveContext = useReconStore(s => s.setActiveContext)
   const acceptProposedMatch = useReconStore(s => s.acceptProposedMatch)
   const rejectProposedMatch = useReconStore(s => s.rejectProposedMatch)
+  const createManualMatch = useReconStore(s => s.createManualMatch)
 
   const [statusFilter, setStatusFilter] = useState<ItemStatus | 'ALL'>('ALL')
   const [searchQuery, setSearchQuery] = useState('')
   const [expandedMatchId, setExpandedMatchId] = useState<string | null>(null)
+
+  // Manual match state
+  const [manualMatchMode, setManualMatchMode] = useState(false)
+  const [selectedInternal, setSelectedInternal] = useState<string | null>(null)
+  const [selectedExternal, setSelectedExternal] = useState<string | null>(null)
+  const [matchComment, setMatchComment] = useState('')
+
+  // Sort state
+  const [sortField, setSortField] = useState<SortField | null>(null)
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
   const contextItems = useMemo(
     () => items.filter(i => i.contextId === activeContextId),
@@ -359,10 +673,17 @@ export default function Items() {
     })
   }, [contextItems, statusFilter, searchQuery])
 
-  const internalItems = useMemo(() => filtered.filter(i => i.side === 'INTERNAL'), [filtered])
-  const externalItems = useMemo(() => filtered.filter(i => i.side === 'EXTERNAL'), [filtered])
+  const internalItems = useMemo(
+    () => sortItems(filtered.filter(i => i.side === 'INTERNAL'), sortField, sortDir),
+    [filtered, sortField, sortDir]
+  )
 
-  // Build matchId → partner lookup (internal side as primary key)
+  const externalItems = useMemo(
+    () => sortItems(filtered.filter(i => i.side === 'EXTERNAL'), sortField, sortDir),
+    [filtered, sortField, sortDir]
+  )
+
+  // Build matchId -> partner lookup (internal side as primary key)
   const matchPartnerMap = useMemo(() => {
     const map = new Map<string, { internal: ReconItem; external: ReconItem }>()
     const externalByMatchId = new Map<string, ReconItem>()
@@ -385,8 +706,65 @@ export default function Items() {
     return counts
   }, [contextItems])
 
+  // Lookup items by id for the match panel
+  const allItemsById = useMemo(() => {
+    const map = new Map<string, ReconItem>()
+    for (const item of items) map.set(item.id, item)
+    return map
+  }, [items])
+
+  const selectedInternalItem = selectedInternal ? allItemsById.get(selectedInternal) ?? null : null
+  const selectedExternalItem = selectedExternal ? allItemsById.get(selectedExternal) ?? null : null
+  const bothSelected = !!selectedInternalItem && !!selectedExternalItem
+
   const handleToggleExpand = (matchId: string) => {
     setExpandedMatchId(prev => (prev === matchId ? null : matchId))
+  }
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      if (sortDir === 'asc') {
+        setSortDir('desc')
+      } else {
+        // third click clears sort
+        setSortField(null)
+        setSortDir('asc')
+      }
+    } else {
+      setSortField(field)
+      setSortDir('asc')
+    }
+  }
+
+  const handleToggleManualMode = () => {
+    setManualMatchMode(prev => !prev)
+    setSelectedInternal(null)
+    setSelectedExternal(null)
+    setMatchComment('')
+    setExpandedMatchId(null)
+  }
+
+  const handleSelectInternal = (id: string) => {
+    setSelectedInternal(prev => (prev === id ? null : id))
+  }
+
+  const handleSelectExternal = (id: string) => {
+    setSelectedExternal(prev => (prev === id ? null : id))
+  }
+
+  const handleConfirmMatch = () => {
+    if (!selectedInternal || !selectedExternal) return
+    createManualMatch(selectedInternal, selectedExternal, matchComment)
+    setSelectedInternal(null)
+    setSelectedExternal(null)
+    setMatchComment('')
+    setManualMatchMode(false)
+  }
+
+  const handleCancelMatch = () => {
+    setSelectedInternal(null)
+    setSelectedExternal(null)
+    setMatchComment('')
   }
 
   const tableHeaderStyle: React.CSSProperties = {
@@ -399,6 +777,8 @@ export default function Items() {
     borderBottom: '1px solid rgba(255,255,255,0.08)',
     whiteSpace: 'nowrap',
   }
+
+  const sortProps = { currentField: sortField, currentDir: sortDir, onSort: handleSort }
 
   return (
     <div style={{ background: '#0f1117', minHeight: '100vh', padding: '24px 28px', color: '#f1f5f9' }}>
@@ -460,11 +840,63 @@ export default function Items() {
           />
         </div>
 
+        {/* Manual Match toggle */}
+        <button
+          onClick={handleToggleManualMode}
+          style={{
+            padding: '8px 16px',
+            borderRadius: 8,
+            border: manualMatchMode ? 'none' : '1px solid rgba(129,140,248,0.4)',
+            background: manualMatchMode ? '#818cf8' : 'transparent',
+            color: manualMatchMode ? 'white' : '#818cf8',
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: 'pointer',
+            letterSpacing: '0.02em',
+            transition: 'all 0.15s',
+          }}
+        >
+          {manualMatchMode ? 'Exit Manual Match' : 'Manual Match'}
+        </button>
+
         {/* Item count */}
         <div style={{ marginLeft: 'auto', fontSize: 13, color: '#64748b' }}>
           <span style={{ color: '#f1f5f9', fontWeight: 600 }}>{filtered.length}</span> items displayed
         </div>
       </div>
+
+      {/* Manual match mode banner */}
+      {manualMatchMode && (
+        <div
+          style={{
+            marginBottom: 16,
+            padding: '10px 16px',
+            background: 'rgba(129,140,248,0.08)',
+            border: '1px solid rgba(129,140,248,0.3)',
+            borderRadius: 10,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            fontSize: 13,
+            color: '#a5b4fc',
+          }}
+        >
+          <span style={{ fontSize: 16 }}>&#9654;</span>
+          <span>
+            <strong>Manual Match Mode active.</strong> Click an unmatched item on each side to select it. Matched, proposed, and break items are dimmed and not selectable.
+          </span>
+          {selectedInternal && (
+            <span style={{ marginLeft: 8, color: '#3b82f6', fontWeight: 600 }}>
+              Internal selected: {allItemsById.get(selectedInternal)?.reference}
+            </span>
+          )}
+          {selectedExternal && (
+            <span style={{ marginLeft: 8, color: '#10b981', fontWeight: 600 }}>
+              External selected: {allItemsById.get(selectedExternal)?.reference}
+            </span>
+          )}
+        </div>
+      )}
 
       {/* Status filter tabs */}
       <div
@@ -525,7 +957,7 @@ export default function Items() {
         <div
           style={{
             background: 'rgba(26,29,41,0.7)',
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: manualMatchMode ? '1px solid rgba(59,130,246,0.35)' : '1px solid rgba(255,255,255,0.1)',
             borderRadius: 12,
             overflow: 'hidden',
           }}
@@ -549,6 +981,11 @@ export default function Items() {
               }}
             />
             <span style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>Internal Ledger</span>
+            {manualMatchMode && (
+              <span style={{ fontSize: 11, color: '#818cf8', fontWeight: 600 }}>
+                — select one unmatched item
+              </span>
+            )}
             <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>
               {internalItems.length} items
             </span>
@@ -558,13 +995,13 @@ export default function Items() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: 'rgba(0,0,0,0.2)' }}>
-                  <th style={tableHeaderStyle}>Date</th>
-                  <th style={tableHeaderStyle}>Reference</th>
+                  <SortableTh label="Date" field="valueDate" {...sortProps} />
+                  <SortableTh label="Reference" field="reference" {...sortProps} />
                   <th style={tableHeaderStyle}>Description</th>
                   <th style={{ ...tableHeaderStyle, textAlign: 'center' }}>CCY</th>
-                  <th style={{ ...tableHeaderStyle, textAlign: 'right' }}>Amount</th>
+                  <SortableTh label="Amount" field="amount" {...sortProps} style={{ textAlign: 'right' }} />
                   <th style={{ ...tableHeaderStyle, textAlign: 'center' }}>Status</th>
-                  <th style={{ ...tableHeaderStyle, textAlign: 'center' }}>Age</th>
+                  <SortableTh label="Age" field="age" {...sortProps} style={{ textAlign: 'center' }} />
                 </tr>
               </thead>
               <tbody>
@@ -590,6 +1027,9 @@ export default function Items() {
                           onToggle={() => handleToggleExpand(item.matchId!)}
                           onAccept={() => acceptProposedMatch(item.matchId!)}
                           onReject={() => rejectProposedMatch(item.matchId!)}
+                          manualMatchMode={manualMatchMode}
+                          isSelected={selectedInternal === item.id}
+                          onManualSelect={() => handleSelectInternal(item.id)}
                         />
                         {isExpanded && pair && (
                           <tr key={`${item.id}-detail`}>
@@ -617,7 +1057,7 @@ export default function Items() {
         <div
           style={{
             background: 'rgba(26,29,41,0.7)',
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: manualMatchMode ? '1px solid rgba(16,185,129,0.35)' : '1px solid rgba(255,255,255,0.1)',
             borderRadius: 12,
             overflow: 'hidden',
           }}
@@ -641,6 +1081,11 @@ export default function Items() {
               }}
             />
             <span style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>Bank Statement</span>
+            {manualMatchMode && (
+              <span style={{ fontSize: 11, color: '#818cf8', fontWeight: 600 }}>
+                — select one unmatched item
+              </span>
+            )}
             <span style={{ marginLeft: 'auto', fontSize: 12, color: '#64748b' }}>
               {externalItems.length} items
             </span>
@@ -650,13 +1095,13 @@ export default function Items() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: 'rgba(0,0,0,0.2)' }}>
-                  <th style={tableHeaderStyle}>Date</th>
-                  <th style={tableHeaderStyle}>Reference</th>
+                  <SortableTh label="Date" field="valueDate" {...sortProps} />
+                  <SortableTh label="Reference" field="reference" {...sortProps} />
                   <th style={tableHeaderStyle}>Description</th>
                   <th style={{ ...tableHeaderStyle, textAlign: 'center' }}>CCY</th>
-                  <th style={{ ...tableHeaderStyle, textAlign: 'right' }}>Amount</th>
+                  <SortableTh label="Amount" field="amount" {...sortProps} style={{ textAlign: 'right' }} />
                   <th style={{ ...tableHeaderStyle, textAlign: 'center' }}>Status</th>
-                  <th style={{ ...tableHeaderStyle, textAlign: 'center' }}>Age</th>
+                  <SortableTh label="Age" field="age" {...sortProps} style={{ textAlign: 'center' }} />
                 </tr>
               </thead>
               <tbody>
@@ -682,6 +1127,9 @@ export default function Items() {
                           onToggle={() => handleToggleExpand(item.matchId!)}
                           onAccept={() => acceptProposedMatch(item.matchId!)}
                           onReject={() => rejectProposedMatch(item.matchId!)}
+                          manualMatchMode={manualMatchMode}
+                          isSelected={selectedExternal === item.id}
+                          onManualSelect={() => handleSelectExternal(item.id)}
                         />
                         {isExpanded && pair && (
                           <tr key={`${item.id}-detail`}>
@@ -705,6 +1153,18 @@ export default function Items() {
           </div>
         </div>
       </div>
+
+      {/* Manual Match Panel — shown below tables when both sides are selected */}
+      {manualMatchMode && bothSelected && selectedInternalItem && selectedExternalItem && (
+        <ManualMatchPanel
+          internalItem={selectedInternalItem}
+          externalItem={selectedExternalItem}
+          comment={matchComment}
+          onCommentChange={setMatchComment}
+          onConfirm={handleConfirmMatch}
+          onCancel={handleCancelMatch}
+        />
+      )}
     </div>
   )
 }

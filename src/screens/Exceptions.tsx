@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useReconStore } from '../store/reconStore'
-import type { Exception, WriteOffRequest, ReasonCode } from '../data/types'
+import type { Exception, WriteOffRequest, ReasonCode, Case, CaseStatus } from '../data/types'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -31,6 +31,24 @@ const REASON_CODE_OPTIONS: { value: ReasonCode; label: string }[] = [
   { value: 'DUPLICATE', label: 'Duplicate' },
   { value: 'UNKNOWN', label: 'Unknown' },
 ]
+
+const CASE_STATUS_OPTIONS: { value: CaseStatus; label: string }[] = [
+  { value: 'OPEN', label: 'Open' },
+  { value: 'IN_PROGRESS', label: 'In Progress' },
+  { value: 'PENDING_EXTERNAL', label: 'Pending External' },
+  { value: 'ESCALATED', label: 'Escalated' },
+  { value: 'RESOLVED', label: 'Resolved' },
+  { value: 'CLOSED', label: 'Closed' },
+]
+
+const CASE_STATUS_COLORS: Record<CaseStatus, string> = {
+  OPEN: '#f59e0b',
+  IN_PROGRESS: '#3b82f6',
+  PENDING_EXTERNAL: '#8b5cf6',
+  ESCALATED: '#ef4444',
+  RESOLVED: '#10b981',
+  CLOSED: '#64748b',
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -146,18 +164,52 @@ function SlaBadge({ deadline, slaBreach }: { deadline: string; slaBreach: boolea
 
 interface ExpandedExceptionProps {
   exception: Exception
+  team: { id: string; name: string }[]
+  isSupervisor: boolean
+  writeOffFormId: string | null
+  escalatedIds: Set<string>
   onAssignReasonCode: (code: ReasonCode) => void
   onRequestWriteOff: () => void
+  onCancelWriteOff: () => void
+  onSubmitWriteOff: (comments: string) => void
   onEscalate: () => void
+  onAddNote: (note: string) => void
+  onAssign: (analystName: string) => void
+  onResolve: () => void
 }
 
 function ExpandedExceptionDetail({
   exception,
+  team,
+  isSupervisor,
+  writeOffFormId,
+  escalatedIds,
   onAssignReasonCode,
   onRequestWriteOff,
+  onCancelWriteOff,
+  onSubmitWriteOff,
   onEscalate,
+  onAddNote,
+  onAssign,
+  onResolve,
 }: ExpandedExceptionProps) {
   const { item } = exception
+  const [writeOffComments, setWriteOffComments] = useState('')
+  const [noteText, setNoteText] = useState('')
+  const showWriteOffForm = writeOffFormId === exception.id
+  const showEscalatedMsg = escalatedIds.has(exception.id)
+
+  const inputStyle: React.CSSProperties = {
+    background: 'rgba(26,29,41,0.9)',
+    border: '1px solid rgba(255,255,255,0.15)',
+    borderRadius: 7,
+    color: '#f1f5f9',
+    padding: '6px 12px',
+    fontSize: 12,
+    outline: 'none',
+    width: '100%',
+    boxSizing: 'border-box',
+  }
 
   return (
     <div
@@ -217,6 +269,34 @@ function ExpandedExceptionDetail({
               </span>
             </div>
           ))}
+
+          {/* Assign To dropdown */}
+          <div style={{ marginTop: 14 }}>
+            <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6, fontWeight: 600 }}>
+              Assign To
+            </div>
+            <select
+              value={exception.assignedTo}
+              onChange={e => onAssign(e.target.value)}
+              style={{
+                background: 'rgba(26,29,41,0.9)',
+                border: '1px solid rgba(255,255,255,0.15)',
+                borderRadius: 7,
+                color: '#f1f5f9',
+                padding: '6px 12px',
+                fontSize: 12,
+                cursor: 'pointer',
+                outline: 'none',
+                width: '100%',
+              }}
+            >
+              {team.map(member => (
+                <option key={member.id} value={member.name}>
+                  {member.name}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {/* Notes */}
@@ -227,7 +307,7 @@ function ExpandedExceptionDetail({
           {exception.notes.length === 0 ? (
             <div style={{ fontSize: 12, color: '#475569', fontStyle: 'italic' }}>No notes on this exception.</div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
               {exception.notes.map((note, i) => (
                 <div
                   key={i}
@@ -246,6 +326,44 @@ function ExpandedExceptionDetail({
               ))}
             </div>
           )}
+
+          {/* Add Note input */}
+          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+            <input
+              type="text"
+              value={noteText}
+              onChange={e => setNoteText(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && noteText.trim()) {
+                  onAddNote(noteText.trim())
+                  setNoteText('')
+                }
+              }}
+              placeholder="Add investigation note..."
+              style={{ ...inputStyle, flex: 1 }}
+            />
+            <button
+              onClick={() => {
+                if (noteText.trim()) {
+                  onAddNote(noteText.trim())
+                  setNoteText('')
+                }
+              }}
+              style={{
+                padding: '6px 12px',
+                borderRadius: 7,
+                border: 'none',
+                background: '#3b82f6',
+                color: '#fff',
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              Add
+            </button>
+          </div>
         </div>
       </div>
 
@@ -256,82 +374,199 @@ function ExpandedExceptionDetail({
           gap: 10,
           paddingTop: 16,
           borderTop: '1px solid rgba(255,255,255,0.06)',
-          alignItems: 'center',
+          alignItems: 'flex-start',
           flexWrap: 'wrap',
+          flexDirection: 'column',
         }}
       >
-        <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginRight: 6 }}>
-          Actions:
-        </span>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', width: '100%' }}>
+          <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginRight: 6 }}>
+            Actions:
+          </span>
 
-        {/* Reason Code dropdown */}
-        <select
-          defaultValue={exception.reasonCode}
-          onChange={e => onAssignReasonCode(e.target.value as ReasonCode)}
-          style={{
-            background: 'rgba(26,29,41,0.9)',
-            border: '1px solid rgba(255,255,255,0.15)',
-            borderRadius: 7,
-            color: '#f1f5f9',
-            padding: '6px 12px',
-            fontSize: 12,
-            cursor: 'pointer',
-            outline: 'none',
-          }}
-        >
-          <option value="" disabled>
-            Assign Reason Code
-          </option>
-          {REASON_CODE_OPTIONS.map(opt => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
+          {/* Reason Code dropdown */}
+          <select
+            defaultValue={exception.reasonCode}
+            onChange={e => onAssignReasonCode(e.target.value as ReasonCode)}
+            style={{
+              background: 'rgba(26,29,41,0.9)',
+              border: '1px solid rgba(255,255,255,0.15)',
+              borderRadius: 7,
+              color: '#f1f5f9',
+              padding: '6px 12px',
+              fontSize: 12,
+              cursor: 'pointer',
+              outline: 'none',
+            }}
+          >
+            <option value="" disabled>
+              Assign Reason Code
             </option>
-          ))}
-        </select>
+            {REASON_CODE_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
 
-        {/* Request Write-Off */}
-        {Math.abs(item.amount) < 10000 && (
+          {/* Request Write-Off */}
+          {Math.abs(item.amount) < 10000 && (
+            <button
+              onClick={onRequestWriteOff}
+              style={{
+                padding: '6px 14px',
+                borderRadius: 7,
+                border: '1px solid rgba(139,92,246,0.4)',
+                background: 'rgba(139,92,246,0.1)',
+                color: '#8b5cf6',
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+                letterSpacing: '0.03em',
+                transition: 'background 0.15s',
+              }}
+              onMouseEnter={e => ((e.currentTarget as HTMLButtonElement).style.background = 'rgba(139,92,246,0.2)')}
+              onMouseLeave={e => ((e.currentTarget as HTMLButtonElement).style.background = 'rgba(139,92,246,0.1)')}
+            >
+              Request Write-Off
+            </button>
+          )}
+
+          {/* Escalate */}
           <button
-            onClick={onRequestWriteOff}
+            onClick={onEscalate}
             style={{
               padding: '6px 14px',
               borderRadius: 7,
-              border: '1px solid rgba(139,92,246,0.4)',
-              background: 'rgba(139,92,246,0.1)',
-              color: '#8b5cf6',
+              border: '1px solid rgba(239,68,68,0.4)',
+              background: 'rgba(239,68,68,0.1)',
+              color: '#ef4444',
               fontSize: 12,
               fontWeight: 600,
               cursor: 'pointer',
               letterSpacing: '0.03em',
               transition: 'background 0.15s',
             }}
-            onMouseEnter={e => ((e.currentTarget as HTMLButtonElement).style.background = 'rgba(139,92,246,0.2)')}
-            onMouseLeave={e => ((e.currentTarget as HTMLButtonElement).style.background = 'rgba(139,92,246,0.1)')}
+            onMouseEnter={e => ((e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,0.2)')}
+            onMouseLeave={e => ((e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,0.1)')}
           >
-            Request Write-Off
+            Escalate to Case
           </button>
-        )}
 
-        {/* Escalate */}
-        <button
-          onClick={onEscalate}
-          style={{
-            padding: '6px 14px',
-            borderRadius: 7,
-            border: '1px solid rgba(239,68,68,0.4)',
-            background: 'rgba(239,68,68,0.1)',
-            color: '#ef4444',
-            fontSize: 12,
-            fontWeight: 600,
-            cursor: 'pointer',
-            letterSpacing: '0.03em',
-            transition: 'background 0.15s',
-          }}
-          onMouseEnter={e => ((e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,0.2)')}
-          onMouseLeave={e => ((e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,0.1)')}
-        >
-          Escalate to Case
-        </button>
+          {/* Escalated confirmation */}
+          {showEscalatedMsg && (
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                color: '#10b981',
+                background: 'rgba(16,185,129,0.1)',
+                border: '1px solid rgba(16,185,129,0.3)',
+                borderRadius: 7,
+                padding: '4px 12px',
+              }}
+            >
+              Case created
+            </span>
+          )}
+
+          {/* Resolve — supervisor only */}
+          {isSupervisor && (
+            <button
+              onClick={onResolve}
+              style={{
+                padding: '6px 14px',
+                borderRadius: 7,
+                border: '1px solid rgba(16,185,129,0.4)',
+                background: 'rgba(16,185,129,0.1)',
+                color: '#10b981',
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: 'pointer',
+                letterSpacing: '0.03em',
+                marginLeft: 'auto',
+              }}
+            >
+              Mark Resolved
+            </button>
+          )}
+        </div>
+
+        {/* Write-Off inline form */}
+        {showWriteOffForm && (
+          <div
+            style={{
+              width: '100%',
+              background: 'rgba(139,92,246,0.07)',
+              border: '1px solid rgba(139,92,246,0.25)',
+              borderRadius: 9,
+              padding: '14px 16px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 10,
+            }}
+          >
+            <div style={{ fontSize: 12, fontWeight: 600, color: '#8b5cf6' }}>
+              Write-Off Request — {item.reference}
+            </div>
+            <textarea
+              value={writeOffComments}
+              onChange={e => setWriteOffComments(e.target.value)}
+              placeholder="Reason for write-off..."
+              rows={3}
+              style={{
+                background: 'rgba(10,12,20,0.8)',
+                border: '1px solid rgba(139,92,246,0.3)',
+                borderRadius: 7,
+                color: '#f1f5f9',
+                padding: '8px 12px',
+                fontSize: 12,
+                outline: 'none',
+                resize: 'vertical',
+                fontFamily: 'inherit',
+                lineHeight: 1.5,
+              }}
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={() => {
+                  onSubmitWriteOff(writeOffComments)
+                  setWriteOffComments('')
+                }}
+                style={{
+                  padding: '6px 16px',
+                  borderRadius: 7,
+                  border: 'none',
+                  background: '#8b5cf6',
+                  color: '#fff',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Submit
+              </button>
+              <button
+                onClick={() => {
+                  onCancelWriteOff()
+                  setWriteOffComments('')
+                }}
+                style={{
+                  padding: '6px 16px',
+                  borderRadius: 7,
+                  border: '1px solid rgba(255,255,255,0.15)',
+                  background: 'transparent',
+                  color: '#94a3b8',
+                  fontSize: 12,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -343,20 +578,38 @@ interface ExceptionRowProps {
   exception: Exception
   index: number
   isExpanded: boolean
+  team: { id: string; name: string }[]
+  isSupervisor: boolean
+  writeOffFormId: string | null
+  escalatedIds: Set<string>
   onToggle: () => void
   onAssignReasonCode: (code: ReasonCode) => void
   onRequestWriteOff: () => void
+  onCancelWriteOff: () => void
+  onSubmitWriteOff: (comments: string) => void
   onEscalate: () => void
+  onAddNote: (note: string) => void
+  onAssign: (analystName: string) => void
+  onResolve: () => void
 }
 
 function ExceptionRow({
   exception,
   index,
   isExpanded,
+  team,
+  isSupervisor,
+  writeOffFormId,
+  escalatedIds,
   onToggle,
   onAssignReasonCode,
   onRequestWriteOff,
+  onCancelWriteOff,
+  onSubmitWriteOff,
   onEscalate,
+  onAddNote,
+  onAssign,
+  onResolve,
 }: ExceptionRowProps) {
   const { item } = exception
   const isNegative = item.amount < 0
@@ -431,9 +684,18 @@ function ExceptionRow({
           <td colSpan={10} style={{ padding: '0 14px 14px' }}>
             <ExpandedExceptionDetail
               exception={exception}
+              team={team}
+              isSupervisor={isSupervisor}
+              writeOffFormId={writeOffFormId}
+              escalatedIds={escalatedIds}
               onAssignReasonCode={onAssignReasonCode}
               onRequestWriteOff={onRequestWriteOff}
+              onCancelWriteOff={onCancelWriteOff}
+              onSubmitWriteOff={onSubmitWriteOff}
               onEscalate={onEscalate}
+              onAddNote={onAddNote}
+              onAssign={onAssign}
+              onResolve={onResolve}
             />
           </td>
         </tr>
@@ -653,6 +915,155 @@ function WriteOffQueue({
   )
 }
 
+// ─── Cases Section ────────────────────────────────────────────────────────────
+
+function CasesSection({
+  cases,
+  onUpdateStatus,
+}: {
+  cases: Case[]
+  onUpdateStatus: (caseId: string, status: CaseStatus) => void
+}) {
+  if (cases.length === 0) return null
+
+  return (
+    <div
+      style={{
+        background: 'rgba(26,29,41,0.7)',
+        border: '1px solid rgba(59,130,246,0.25)',
+        borderRadius: 12,
+        overflow: 'hidden',
+        marginTop: 24,
+      }}
+    >
+      {/* Header */}
+      <div
+        style={{
+          padding: '14px 20px',
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          background: 'rgba(59,130,246,0.07)',
+        }}
+      >
+        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#3b82f6' }} />
+        <span style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>Cases</span>
+        <span
+          style={{
+            background: 'rgba(59,130,246,0.2)',
+            color: '#3b82f6',
+            borderRadius: 10,
+            padding: '1px 8px',
+            fontSize: 11,
+            fontWeight: 700,
+          }}
+        >
+          {cases.length}
+        </span>
+      </div>
+
+      {/* Cases list */}
+      <div style={{ padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {cases.map(c => {
+          const statusColor = CASE_STATUS_COLORS[c.status]
+          return (
+            <div
+              key={c.id}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 16,
+                padding: '14px 16px',
+                background: 'rgba(255,255,255,0.02)',
+                border: '1px solid rgba(255,255,255,0.07)',
+                borderRadius: 10,
+                flexWrap: 'wrap',
+              }}
+            >
+              {/* Case ID */}
+              <div style={{ minWidth: 120 }}>
+                <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Case ID</div>
+                <div style={{ fontSize: 12, color: '#3b82f6', fontFamily: 'monospace', fontWeight: 600 }}>{c.id}</div>
+              </div>
+
+              {/* Status badge */}
+              <div>
+                <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Status</div>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: statusColor,
+                    background: `${statusColor}18`,
+                    border: `1px solid ${statusColor}35`,
+                    borderRadius: 6,
+                    padding: '2px 8px',
+                    letterSpacing: '0.03em',
+                  }}
+                >
+                  {c.status.replace('_', ' ')}
+                </span>
+              </div>
+
+              {/* Assigned To */}
+              <div>
+                <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Assigned To</div>
+                <div style={{ fontSize: 12, color: '#f1f5f9' }}>{c.assignedTo || '—'}</div>
+              </div>
+
+              {/* Item Reference */}
+              <div>
+                <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Item Ref</div>
+                <div style={{ fontSize: 12, color: '#94a3b8', fontFamily: 'monospace' }}>{c.item.reference}</div>
+              </div>
+
+              {/* Amount */}
+              <div>
+                <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Amount</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9', fontVariantNumeric: 'tabular-nums' }}>
+                  {formatCurrency(c.amount, c.item.currency)}
+                </div>
+              </div>
+
+              {/* Created */}
+              <div>
+                <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Created</div>
+                <div style={{ fontSize: 12, color: '#94a3b8' }}>{formatDate(c.createdAt)}</div>
+              </div>
+
+              {/* Update Status */}
+              <div style={{ marginLeft: 'auto' }}>
+                <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Update Status</div>
+                <select
+                  value={c.status}
+                  onChange={e => onUpdateStatus(c.id, e.target.value as CaseStatus)}
+                  style={{
+                    background: 'rgba(26,29,41,0.9)',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                    borderRadius: 7,
+                    color: '#f1f5f9',
+                    padding: '5px 10px',
+                    fontSize: 12,
+                    cursor: 'pointer',
+                    outline: 'none',
+                  }}
+                >
+                  {CASE_STATUS_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ─── Summary Stats ────────────────────────────────────────────────────────────
 
 function ExceptionSummary({ exceptions, writeOffs }: { exceptions: Exception[]; writeOffs: WriteOffRequest[] }) {
@@ -728,15 +1139,27 @@ export default function Exceptions() {
   const contexts = useReconStore(s => s.contexts)
   const exceptions = useReconStore(s => s.exceptions)
   const writeOffs = useReconStore(s => s.writeOffs)
+  const cases = useReconStore(s => s.cases)
+  const team = useReconStore(s => s.team)
   const activeContextId = useReconStore(s => s.activeContextId)
   const activeRole = useReconStore(s => s.activeRole)
   const setActiveContext = useReconStore(s => s.setActiveContext)
   const assignReasonCode = useReconStore(s => s.assignReasonCode)
   const approveWriteOff = useReconStore(s => s.approveWriteOff)
   const rejectWriteOff = useReconStore(s => s.rejectWriteOff)
+  const createWriteOffRequest = useReconStore(s => s.createWriteOffRequest)
+  const escalateToCase = useReconStore(s => s.escalateToCase)
+  const addNote = useReconStore(s => s.addNote)
+  const assignException = useReconStore(s => s.assignException)
+  const resolveException = useReconStore(s => s.resolveException)
+  const updateCaseStatus = useReconStore(s => s.updateCaseStatus)
 
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('ALL')
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  // Track which exception has the write-off form open
+  const [writeOffFormId, setWriteOffFormId] = useState<string | null>(null)
+  // Track which exceptions just had a case created (for 2-second confirmation)
+  const [escalatedIds, setEscalatedIds] = useState<Set<string>>(new Set())
 
   const isSupervisor = activeRole === 'SUPERVISOR'
 
@@ -750,13 +1173,17 @@ export default function Exceptions() {
     [writeOffs, activeContextId]
   )
 
+  const contextCases = useMemo(
+    () => cases.filter(c => c.contextId === activeContextId),
+    [cases, activeContextId]
+  )
+
   const filteredExceptions = useMemo(() => {
     const base =
       priorityFilter === 'ALL'
         ? contextExceptions
         : contextExceptions.filter(e => e.priority === priorityFilter)
 
-    // Sort: CRITICAL first, then HIGH, then by SLA breach, then by age desc
     const priorityOrder: Record<Priority, number> = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 }
     return [...base].sort((a, b) => {
       const pDiff = priorityOrder[a.priority] - priorityOrder[b.priority]
@@ -776,15 +1203,35 @@ export default function Exceptions() {
 
   const handleToggle = (id: string) => {
     setExpandedId(prev => (prev === id ? null : id))
+    // Close write-off form if switching rows
+    if (writeOffFormId && writeOffFormId !== id) {
+      setWriteOffFormId(null)
+    }
   }
 
-  const handleRequestWriteOff = (exc: Exception) => {
-    // In a real app this would open a modal — here we just log the intent
-    console.info(`Write-off requested for exception ${exc.id}: ${exc.item.reference}`)
+  const handleRequestWriteOff = (excId: string) => {
+    setWriteOffFormId(prev => (prev === excId ? null : excId))
   }
 
-  const handleEscalate = (exc: Exception) => {
-    console.info(`Escalating exception ${exc.id} to case management`)
+  const handleCancelWriteOff = () => {
+    setWriteOffFormId(null)
+  }
+
+  const handleSubmitWriteOff = (excId: string, comments: string) => {
+    createWriteOffRequest(excId, comments)
+    setWriteOffFormId(null)
+  }
+
+  const handleEscalate = (excId: string) => {
+    escalateToCase(excId)
+    setEscalatedIds(prev => new Set(prev).add(excId))
+    setTimeout(() => {
+      setEscalatedIds(prev => {
+        const next = new Set(prev)
+        next.delete(excId)
+        return next
+      })
+    }, 2000)
   }
 
   const thStyle: React.CSSProperties = {
@@ -996,10 +1443,19 @@ export default function Exceptions() {
                     exception={exc}
                     index={idx}
                     isExpanded={expandedId === exc.id}
+                    team={team}
+                    isSupervisor={isSupervisor}
+                    writeOffFormId={writeOffFormId}
+                    escalatedIds={escalatedIds}
                     onToggle={() => handleToggle(exc.id)}
                     onAssignReasonCode={(code) => assignReasonCode(exc.id, code)}
-                    onRequestWriteOff={() => handleRequestWriteOff(exc)}
-                    onEscalate={() => handleEscalate(exc)}
+                    onRequestWriteOff={() => handleRequestWriteOff(exc.id)}
+                    onCancelWriteOff={handleCancelWriteOff}
+                    onSubmitWriteOff={(comments) => handleSubmitWriteOff(exc.id, comments)}
+                    onEscalate={() => handleEscalate(exc.id)}
+                    onAddNote={(note) => addNote(exc.id, note)}
+                    onAssign={(name) => assignException(exc.id, name)}
+                    onResolve={() => resolveException(exc.id)}
                   />
                 ))
               )}
@@ -1014,6 +1470,12 @@ export default function Exceptions() {
         isSupervisor={isSupervisor}
         onApprove={approveWriteOff}
         onReject={rejectWriteOff}
+      />
+
+      {/* Cases Section */}
+      <CasesSection
+        cases={contextCases}
+        onUpdateStatus={updateCaseStatus}
       />
     </div>
   )

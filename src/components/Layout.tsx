@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import {
-  LayoutDashboard, Zap, Table2, Scale, AlertTriangle,
+  LayoutDashboard, Zap, Table2, Scale, AlertTriangle, FileText,
 } from 'lucide-react'
 import { useReconStore } from '../store/reconStore'
 
@@ -26,6 +26,7 @@ const NAV_ITEMS = [
   { to: '/items', icon: Table2, label: 'Items' },
   { to: '/balance-pools', icon: Scale, label: 'Balance Pools' },
   { to: '/exceptions', icon: AlertTriangle, label: 'Exceptions' },
+  { to: '/report', icon: FileText, label: 'Recon Report' },
 ]
 
 const TITLES: Record<string, string> = {
@@ -34,6 +35,7 @@ const TITLES: Record<string, string> = {
   '/items': 'Items',
   '/balance-pools': 'Balance Pools',
   '/exceptions': 'Exceptions',
+  '/report': 'Recon Report',
 }
 
 export default function Layout() {

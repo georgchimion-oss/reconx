@@ -4,7 +4,7 @@ import { runMatching } from '../data/matchingEngine'
 import type {
   ReconContext, ReconItem, BalancePool, MatchRule,
   MatchingRunResult, Exception, WriteOffRequest, TeamMember,
-  DashboardKPIs, UserRole,
+  DashboardKPIs, UserRole, Case, AuditEvent, ReasonCode,
 } from '../data/types'
 
 interface ReconStore {
@@ -18,6 +18,8 @@ interface ReconStore {
   writeOffs: WriteOffRequest[]
   team: TeamMember[]
   kpis: DashboardKPIs
+  cases: Case[]
+  auditTrail: AuditEvent[]
 
   // UI State
   activeContextId: string
@@ -39,6 +41,14 @@ interface ReconStore {
   rejectProposedMatch: (matchId: string) => void
   assignReasonCode: (exceptionId: string, code: string) => void
   activateSuggestedRule: (ruleId: string) => void
+  // New actions
+  createWriteOffRequest: (exceptionId: string, comments: string) => void
+  escalateToCase: (exceptionId: string) => void
+  addNote: (exceptionId: string, note: string) => void
+  assignException: (exceptionId: string, analystId: string) => void
+  createManualMatch: (internalItemId: string, externalItemId: string, comment: string) => void
+  resolveException: (exceptionId: string) => void
+  updateCaseStatus: (caseId: string, status: Case['status']) => void
 }
 
 export const useReconStore = create<ReconStore>((set, get) => ({
@@ -52,6 +62,9 @@ export const useReconStore = create<ReconStore>((set, get) => ({
   writeOffs: [],
   team: [],
   kpis: {} as DashboardKPIs,
+
+  cases: [],
+  auditTrail: [],
 
   activeContextId: 'ctx-1',
   activeRole: 'SUPERVISOR',
@@ -199,6 +212,167 @@ export const useReconStore = create<ReconStore>((set, get) => ({
         ...state.matchRules,
         ...state.suggestedRules.filter(r => r.id === ruleId).map(r => ({ ...r, isActive: true })),
       ],
+    }))
+  },
+
+  createWriteOffRequest: (exceptionId, comments) => {
+    const { exceptions, activeRole } = get()
+    const exc = exceptions.find(e => e.id === exceptionId)
+    if (!exc) return
+    const user = activeRole === 'SUPERVISOR' ? 'Thomas Mueller' : 'Sarah Chen'
+    const wo: WriteOffRequest = {
+      id: `wo-${Date.now()}`,
+      itemId: exc.itemId,
+      item: exc.item,
+      contextId: exc.contextId,
+      amount: Math.abs(exc.item.amount),
+      reasonCode: exc.reasonCode as ReasonCode,
+      requestedBy: user,
+      requestedAt: new Date().toISOString(),
+      status: 'PENDING',
+      approvedBy: null,
+      approvedAt: null,
+      comments,
+    }
+    const event: AuditEvent = {
+      id: `ae-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      user,
+      action: 'WRITE_OFF_REQUESTED',
+      detail: `Write-off requested for ${exc.item.reference} ($${Math.abs(exc.item.amount).toLocaleString()}) — ${comments}`,
+    }
+    set(state => ({
+      writeOffs: [...state.writeOffs, wo],
+      auditTrail: [event, ...state.auditTrail],
+    }))
+  },
+
+  escalateToCase: (exceptionId) => {
+    const { exceptions, activeRole } = get()
+    const exc = exceptions.find(e => e.id === exceptionId)
+    if (!exc) return
+    const user = activeRole === 'SUPERVISOR' ? 'Thomas Mueller' : 'Sarah Chen'
+    const newCase: Case = {
+      id: `case-${Date.now()}`,
+      exceptionId,
+      contextId: exc.contextId,
+      item: exc.item,
+      status: 'OPEN',
+      priority: exc.priority,
+      assignedTo: exc.assignedTo,
+      createdBy: user,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      notes: [{
+        id: `ae-${Date.now()}-1`,
+        timestamp: new Date().toISOString(),
+        user,
+        action: 'CASE_CREATED',
+        detail: `Case escalated from exception ${exc.id} — ${exc.item.reference}`,
+      }],
+      amount: Math.abs(exc.item.amount),
+    }
+    const event: AuditEvent = {
+      id: `ae-${Date.now()}-2`,
+      timestamp: new Date().toISOString(),
+      user,
+      action: 'CASE_ESCALATED',
+      detail: `Exception ${exc.id} escalated to case ${newCase.id}`,
+    }
+    set(state => ({
+      cases: [...state.cases, newCase],
+      auditTrail: [event, ...state.auditTrail],
+    }))
+  },
+
+  addNote: (exceptionId, note) => {
+    const user = get().activeRole === 'SUPERVISOR' ? 'Thomas Mueller' : 'Sarah Chen'
+    const event: AuditEvent = {
+      id: `ae-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      user,
+      action: 'NOTE_ADDED',
+      detail: note,
+    }
+    set(state => ({
+      exceptions: state.exceptions.map(exc =>
+        exc.id === exceptionId ? { ...exc, notes: [...exc.notes, `${user}: ${note}`] } : exc
+      ),
+      auditTrail: [event, ...state.auditTrail],
+    }))
+  },
+
+  assignException: (exceptionId, analystName) => {
+    const user = get().activeRole === 'SUPERVISOR' ? 'Thomas Mueller' : 'Sarah Chen'
+    const event: AuditEvent = {
+      id: `ae-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      user,
+      action: 'EXCEPTION_ASSIGNED',
+      detail: `Exception reassigned to ${analystName}`,
+    }
+    set(state => ({
+      exceptions: state.exceptions.map(exc =>
+        exc.id === exceptionId ? { ...exc, assignedTo: analystName } : exc
+      ),
+      auditTrail: [event, ...state.auditTrail],
+    }))
+  },
+
+  createManualMatch: (internalItemId, externalItemId, comment) => {
+    const user = get().activeRole === 'SUPERVISOR' ? 'Thomas Mueller' : 'Sarah Chen'
+    const matchId = `manual-${Date.now()}`
+    const event: AuditEvent = {
+      id: `ae-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      user,
+      action: 'MANUAL_MATCH',
+      detail: `Manual match created: ${internalItemId} ↔ ${externalItemId} — ${comment}`,
+    }
+    set(state => ({
+      items: state.items.map(item => {
+        if (item.id === internalItemId || item.id === externalItemId) {
+          return { ...item, status: 'MATCHED' as const, matchId, matchPass: 'EXACT' as const }
+        }
+        return item
+      }),
+      // Remove exceptions linked to these items
+      exceptions: state.exceptions.filter(exc =>
+        exc.itemId !== internalItemId && exc.itemId !== externalItemId
+      ),
+      auditTrail: [event, ...state.auditTrail],
+    }))
+  },
+
+  resolveException: (exceptionId) => {
+    const user = get().activeRole === 'SUPERVISOR' ? 'Thomas Mueller' : 'Sarah Chen'
+    const event: AuditEvent = {
+      id: `ae-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      user,
+      action: 'EXCEPTION_RESOLVED',
+      detail: `Exception ${exceptionId} marked as resolved`,
+    }
+    set(state => ({
+      exceptions: state.exceptions.filter(exc => exc.id !== exceptionId),
+      auditTrail: [event, ...state.auditTrail],
+    }))
+  },
+
+  updateCaseStatus: (caseId, status) => {
+    const user = get().activeRole === 'SUPERVISOR' ? 'Thomas Mueller' : 'Sarah Chen'
+    const event: AuditEvent = {
+      id: `ae-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      user,
+      action: 'CASE_STATUS_UPDATED',
+      detail: `Case ${caseId} status changed to ${status}`,
+    }
+    set(state => ({
+      cases: state.cases.map(c =>
+        c.id === caseId ? { ...c, status, updatedAt: new Date().toISOString() } : c
+      ),
+      auditTrail: [event, ...state.auditTrail],
     }))
   },
 }))
