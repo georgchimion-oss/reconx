@@ -5,6 +5,7 @@ import type {
   ReconContext, ReconItem, BalancePool, MatchRule,
   MatchingRunResult, Exception, WriteOffRequest, TeamMember,
   DashboardKPIs, UserRole, Case, AuditEvent, ReasonCode,
+  MatchGroup, ReconciliationRun,
 } from '../data/types'
 
 interface ReconStore {
@@ -20,6 +21,8 @@ interface ReconStore {
   kpis: DashboardKPIs
   cases: Case[]
   auditTrail: AuditEvent[]
+  matchGroups: MatchGroup[]
+  reconRuns: ReconciliationRun[]
 
   // UI State
   activeContextId: string
@@ -41,14 +44,16 @@ interface ReconStore {
   rejectProposedMatch: (matchId: string) => void
   assignReasonCode: (exceptionId: string, code: string) => void
   activateSuggestedRule: (ruleId: string) => void
-  // New actions
   createWriteOffRequest: (exceptionId: string, comments: string) => void
   escalateToCase: (exceptionId: string) => void
   addNote: (exceptionId: string, note: string) => void
   assignException: (exceptionId: string, analystId: string) => void
   createManualMatch: (internalItemId: string, externalItemId: string, comment: string) => void
+  createMultiMatch: (internalIds: string[], externalIds: string[], comment: string) => void
   resolveException: (exceptionId: string) => void
   updateCaseStatus: (caseId: string, status: Case['status']) => void
+  breakMatchGroup: (groupId: string, reason: string) => void
+  addGroupComment: (groupId: string, comment: string) => void
 }
 
 export const useReconStore = create<ReconStore>((set, get) => ({
@@ -62,9 +67,10 @@ export const useReconStore = create<ReconStore>((set, get) => ({
   writeOffs: [],
   team: [],
   kpis: {} as DashboardKPIs,
-
   cases: [],
   auditTrail: [],
+  matchGroups: [],
+  reconRuns: [],
 
   activeContextId: 'ctx-1',
   activeRole: 'SUPERVISOR',
@@ -84,6 +90,8 @@ export const useReconStore = create<ReconStore>((set, get) => ({
       writeOffs: data.writeOffs,
       team: data.team,
       kpis: data.kpis,
+      matchGroups: data.matchGroups,
+      reconRuns: data.reconRuns,
     })
   },
 
@@ -95,16 +103,13 @@ export const useReconStore = create<ReconStore>((set, get) => ({
     const { items, matchRules, matchingResults } = get()
     const rules = matchRules.filter(r => r.contextId === contextId)
 
-    // Simulate progressive matching with delays
     const result = runMatching(items, contextId, rules)
 
-    // Animate progress through each pass
     for (let i = 0; i < result.passes.length; i++) {
       set({ matchingProgress: ((i + 1) / result.passes.length) * 100 })
       await new Promise(r => setTimeout(r, 800))
     }
 
-    // Update items with match status
     const itemUpdates = new Map<string, { status: ReconItem['status']; matchId: string; matchPass: ReconItem['matchPass'] }>()
 
     for (const pass of result.passes) {
@@ -182,6 +187,11 @@ export const useReconStore = create<ReconStore>((set, get) => ({
           ? { ...item, status: 'MATCHED' }
           : item
       ),
+      matchGroups: state.matchGroups.map(mg =>
+        mg.id === matchId || mg.internalItems.some(i => i.matchId === matchId) || mg.externalItems.some(i => i.matchId === matchId)
+          ? { ...mg, status: 'CONFIRMED' }
+          : mg
+      ),
     }))
   },
 
@@ -189,7 +199,7 @@ export const useReconStore = create<ReconStore>((set, get) => ({
     set(state => ({
       items: state.items.map(item =>
         item.matchId === matchId && item.status === 'PROPOSED'
-          ? { ...item, status: 'UNMATCHED', matchId: null, matchPass: null }
+          ? { ...item, status: 'UNMATCHED', matchId: null, matchPass: null, matchGroupId: null }
           : item
       ),
     }))
@@ -240,6 +250,8 @@ export const useReconStore = create<ReconStore>((set, get) => ({
       user,
       action: 'WRITE_OFF_REQUESTED',
       detail: `Write-off requested for ${exc.item.reference} ($${Math.abs(exc.item.amount).toLocaleString()}) — ${comments}`,
+      contextId: exc.contextId,
+      itemId: exc.itemId,
     }
     set(state => ({
       writeOffs: [...state.writeOffs, wo],
@@ -278,6 +290,7 @@ export const useReconStore = create<ReconStore>((set, get) => ({
       user,
       action: 'CASE_ESCALATED',
       detail: `Exception ${exc.id} escalated to case ${newCase.id}`,
+      contextId: exc.contextId,
     }
     set(state => ({
       cases: [...state.cases, newCase],
@@ -322,24 +335,115 @@ export const useReconStore = create<ReconStore>((set, get) => ({
   createManualMatch: (internalItemId, externalItemId, comment) => {
     const user = get().activeRole === 'SUPERVISOR' ? 'Thomas Mueller' : 'Sarah Chen'
     const matchId = `manual-${Date.now()}`
+    const groupId = `mg-manual-${Date.now()}`
+    const { items } = get()
+    const intItem = items.find(i => i.id === internalItemId)
+    const extItem = items.find(i => i.id === externalItemId)
+
+    const newGroup: MatchGroup = {
+      id: groupId,
+      contextId: intItem?.contextId ?? '',
+      type: 'MANUAL',
+      status: 'CONFIRMED',
+      pass: 'MANUAL',
+      confidence: 100,
+      internalItems: intItem ? [intItem] : [],
+      externalItems: extItem ? [extItem] : [],
+      internalTotal: intItem?.amount ?? 0,
+      externalTotal: extItem?.amount ?? 0,
+      netDifference: Math.abs((intItem?.amount ?? 0) - (extItem?.amount ?? 0)),
+      toleranceApplied: null,
+      fieldsMatched: ['manual'],
+      ruleUsed: `Manual match by ${user}`,
+      matchedBy: user,
+      matchedAt: new Date().toISOString(),
+      brokenBy: null,
+      brokenAt: null,
+      breakReason: null,
+      comments: comment ? [comment] : [],
+    }
+
     const event: AuditEvent = {
       id: `ae-${Date.now()}`,
       timestamp: new Date().toISOString(),
       user,
       action: 'MANUAL_MATCH',
       detail: `Manual match created: ${internalItemId} ↔ ${externalItemId} — ${comment}`,
+      contextId: intItem?.contextId,
+      itemId: internalItemId,
+      matchGroupId: groupId,
     }
     set(state => ({
       items: state.items.map(item => {
         if (item.id === internalItemId || item.id === externalItemId) {
-          return { ...item, status: 'MATCHED' as const, matchId, matchPass: 'EXACT' as const }
+          return { ...item, status: 'MATCHED' as const, matchId, matchPass: 'MANUAL' as const, matchGroupId: groupId }
         }
         return item
       }),
-      // Remove exceptions linked to these items
       exceptions: state.exceptions.filter(exc =>
         exc.itemId !== internalItemId && exc.itemId !== externalItemId
       ),
+      matchGroups: [...state.matchGroups, newGroup],
+      auditTrail: [event, ...state.auditTrail],
+    }))
+  },
+
+  createMultiMatch: (internalIds, externalIds, comment) => {
+    const user = get().activeRole === 'SUPERVISOR' ? 'Thomas Mueller' : 'Sarah Chen'
+    const groupId = `mg-multi-${Date.now()}`
+    const matchId = `multi-${Date.now()}`
+    const { items } = get()
+    const intItems = items.filter(i => internalIds.includes(i.id))
+    const extItems = items.filter(i => externalIds.includes(i.id))
+    const intTotal = intItems.reduce((s, i) => s + i.amount, 0)
+    const extTotal = extItems.reduce((s, i) => s + i.amount, 0)
+
+    const groupType = internalIds.length === 1 && externalIds.length > 1 ? '1:N'
+      : internalIds.length > 1 && externalIds.length === 1 ? 'N:1'
+      : 'N:N'
+
+    const newGroup: MatchGroup = {
+      id: groupId,
+      contextId: intItems[0]?.contextId ?? '',
+      type: groupType,
+      status: 'CONFIRMED',
+      pass: 'MANUAL',
+      confidence: 100,
+      internalItems: intItems,
+      externalItems: extItems,
+      internalTotal: intTotal,
+      externalTotal: extTotal,
+      netDifference: Math.abs(intTotal - extTotal),
+      toleranceApplied: null,
+      fieldsMatched: ['manual'],
+      ruleUsed: `Manual ${groupType} match by ${user}`,
+      matchedBy: user,
+      matchedAt: new Date().toISOString(),
+      brokenBy: null,
+      brokenAt: null,
+      breakReason: null,
+      comments: comment ? [comment] : [],
+    }
+
+    const allIds = new Set([...internalIds, ...externalIds])
+    const event: AuditEvent = {
+      id: `ae-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      user,
+      action: 'MULTI_MATCH',
+      detail: `${groupType} match created: ${internalIds.length} internal ↔ ${externalIds.length} external — ${comment}`,
+      contextId: intItems[0]?.contextId,
+      matchGroupId: groupId,
+    }
+    set(state => ({
+      items: state.items.map(item => {
+        if (allIds.has(item.id)) {
+          return { ...item, status: 'MATCHED' as const, matchId, matchPass: 'MANUAL' as const, matchGroupId: groupId }
+        }
+        return item
+      }),
+      exceptions: state.exceptions.filter(exc => !allIds.has(exc.itemId)),
+      matchGroups: [...state.matchGroups, newGroup],
       auditTrail: [event, ...state.auditTrail],
     }))
   },
@@ -373,6 +477,46 @@ export const useReconStore = create<ReconStore>((set, get) => ({
         c.id === caseId ? { ...c, status, updatedAt: new Date().toISOString() } : c
       ),
       auditTrail: [event, ...state.auditTrail],
+    }))
+  },
+
+  breakMatchGroup: (groupId, reason) => {
+    const user = get().activeRole === 'SUPERVISOR' ? 'Thomas Mueller' : 'Sarah Chen'
+    const { matchGroups } = get()
+    const group = matchGroups.find(g => g.id === groupId)
+    if (!group) return
+
+    const allItemIds = new Set([
+      ...group.internalItems.map(i => i.id),
+      ...group.externalItems.map(i => i.id),
+    ])
+
+    const event: AuditEvent = {
+      id: `ae-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      user,
+      action: 'MATCH_GROUP_BROKEN',
+      detail: `Match group ${groupId} (${group.type}) broken apart — Reason: ${reason}`,
+      contextId: group.contextId,
+      matchGroupId: groupId,
+    }
+    set(state => ({
+      matchGroups: state.matchGroups.map(mg =>
+        mg.id === groupId ? { ...mg, status: 'BROKEN', brokenBy: user, brokenAt: new Date().toISOString(), breakReason: reason } : mg
+      ),
+      items: state.items.map(item =>
+        allItemIds.has(item.id) ? { ...item, status: 'UNMATCHED', matchId: null, matchPass: null, matchGroupId: null } : item
+      ),
+      auditTrail: [event, ...state.auditTrail],
+    }))
+  },
+
+  addGroupComment: (groupId, comment) => {
+    const user = get().activeRole === 'SUPERVISOR' ? 'Thomas Mueller' : 'Sarah Chen'
+    set(state => ({
+      matchGroups: state.matchGroups.map(mg =>
+        mg.id === groupId ? { ...mg, comments: [...mg.comments, `${user}: ${comment}`] } : mg
+      ),
     }))
   },
 }))

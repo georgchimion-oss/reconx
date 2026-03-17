@@ -46,7 +46,7 @@ const COLOR = {
   amberDim: 'rgba(251, 191, 36, 0.15)',
   red: '#f87171',
   redDim: 'rgba(248, 113, 113, 0.15)',
-  blue: '#60a5fa',
+  blue: '#06B6D4',
   blueDim: 'rgba(96, 165, 250, 0.15)',
   purple: '#a78bfa',
   purpleDim: 'rgba(167, 139, 250, 0.15)',
@@ -70,7 +70,7 @@ const TIER_COLORS = [
   'rgba(248, 113, 113, 0.85)',
 ]
 
-const TIER_BORDERS = ['#60a5fa', '#a78bfa', '#fbbf24', '#f87171']
+const TIER_BORDERS = ['#06B6D4', '#a78bfa', '#fbbf24', '#f87171']
 
 // ─── Helpers ─────────────────────────────────────────────────
 
@@ -107,11 +107,16 @@ interface StatCardProps {
   accent?: string
   accentDim?: string
   fullHeight?: boolean
+  onClick?: () => void
 }
 
-function StatCard({ label, children, accent = COLOR.blue, fullHeight }: StatCardProps) {
+function StatCard({ label, children, accent = COLOR.blue, fullHeight, onClick }: StatCardProps) {
   return (
     <div
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onClick={onClick}
+      onKeyDown={e => onClick && e.key === 'Enter' && onClick()}
       style={{
         background: COLOR.card,
         border: `1px solid ${COLOR.border}`,
@@ -126,7 +131,10 @@ function StatCard({ label, children, accent = COLOR.blue, fullHeight }: StatCard
         overflow: 'hidden',
         boxShadow: '0 1px 0 0 rgba(255,255,255,0.06) inset, 0 4px 16px rgba(0,0,0,0.2)',
         ...(fullHeight ? { height: '100%', boxSizing: 'border-box' } : {}),
+        ...(onClick ? { cursor: 'pointer', transition: 'border-color 0.15s, background 0.15s' } : {}),
       }}
+      onMouseEnter={e => { if (onClick) { (e.currentTarget as HTMLDivElement).style.borderColor = `${accent}60`; (e.currentTarget as HTMLDivElement).style.background = COLOR.surfaceHover } }}
+      onMouseLeave={e => { if (onClick) { (e.currentTarget as HTMLDivElement).style.borderColor = ''; (e.currentTarget as HTMLDivElement).style.background = COLOR.card } }}
     >
       {/* top accent strip */}
       <div
@@ -151,6 +159,11 @@ function StatCard({ label, children, accent = COLOR.blue, fullHeight }: StatCard
         }}
       >
         {label}
+        {onClick && (
+          <span style={{ fontSize: 9, color: accent, fontWeight: 500, marginLeft: 6, opacity: 0.7, letterSpacing: '0.02em', textTransform: 'none' }}>
+            Click to view →
+          </span>
+        )}
       </p>
       {children}
     </div>
@@ -523,16 +536,19 @@ function RoleBanner({ activeRole, balancePools, writeOffs, exceptions, team }: R
     )
   }
 
-  // SUPERVISOR view
-  const pendingSignOffs = balancePools.filter(p => p.signOffStatus === 'PENDING').length
-  const pendingWriteOffs = writeOffs.filter(w => w.status === 'PENDING').length
+  // SUPERVISOR view — Actionable Command Center
+  const pendingPools = balancePools.filter(p => p.signOffStatus === 'PENDING')
+  const pendingWriteOffList = writeOffs.filter(w => w.status === 'PENDING')
+  const slaBreachedExceptions = exceptions.filter(e => e.slaBreach)
+  const escalatedCases = exceptions.filter(e => {
+    const now = new Date()
+    const deadline = new Date(e.slaDeadline)
+    const hoursLeft = (deadline.getTime() - now.getTime()) / (1000 * 60 * 60)
+    return hoursLeft >= 0 && hoursLeft < 8 && !e.slaBreach
+  })
   const activeAnalysts = team.filter(t => t.role === 'ANALYST').length
 
-  const items = [
-    { label: 'Active Analysts', value: activeAnalysts.toString(), color: COLOR.blue },
-    { label: 'Pending Sign-offs', value: pendingSignOffs.toString(), color: pendingSignOffs > 0 ? COLOR.amber : COLOR.green },
-    { label: 'Write-offs Pending', value: pendingWriteOffs.toString(), color: pendingWriteOffs > 0 ? COLOR.red : COLOR.green },
-  ]
+  const totalActionItems = pendingPools.length + pendingWriteOffList.length + slaBreachedExceptions.length
 
   return (
     <div
@@ -540,102 +556,424 @@ function RoleBanner({ activeRole, balancePools, writeOffs, exceptions, team }: R
         background: COLOR.card,
         border: `1px solid ${COLOR.border}`,
         borderRadius: 12,
-        padding: '16px 24px',
+        padding: 0,
         marginBottom: 20,
-        backdropFilter: 'blur(8px)',
-        WebkitBackdropFilter: 'blur(8px)',
         position: 'relative',
         overflow: 'hidden',
       }}
     >
+      {/* Top accent bar */}
       <div
         style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
           height: 3,
-          background: `linear-gradient(90deg, ${COLOR.purple}, transparent)`,
-          borderRadius: '12px 12px 0 0',
+          background: totalActionItems > 0
+            ? `linear-gradient(90deg, ${COLOR.amber}, ${COLOR.red})`
+            : `linear-gradient(90deg, ${COLOR.green}, transparent)`,
         }}
       />
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+
+      {/* Header row */}
+      <div style={{ padding: '16px 24px 0', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
         <div>
-          <p
-            style={{
-              margin: 0,
-              fontSize: 11,
-              fontWeight: 600,
-              letterSpacing: '0.08em',
-              textTransform: 'uppercase',
-              color: COLOR.textMuted,
-              marginBottom: 4,
-            }}
-          >
-            Team Overview
+          <p style={{ margin: 0, fontSize: 11, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: COLOR.textMuted, marginBottom: 4 }}>
+            Supervisor Action Center
           </p>
           <p style={{ margin: 0, fontSize: 12, color: COLOR.textSecondary }}>
-            Supervisor summary — items requiring your action
+            {totalActionItems > 0
+              ? `${totalActionItems} items require your attention`
+              : 'All caught up — no pending actions'}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 32 }}>
-          {items.map(item => (
-            <div key={item.label} style={{ textAlign: 'right' }}>
-              <p style={{ margin: 0, fontSize: 10, color: COLOR.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
-                {item.label}
-              </p>
-              <p style={{ margin: 0, fontSize: 22, fontWeight: 800, color: item.color, letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums' }}>
-                {item.value}
-              </p>
-            </div>
-          ))}
+        <div style={{ display: 'flex', gap: 6 }}>
+          {totalActionItems > 0 && (
+            <span style={{
+              fontSize: 11, fontWeight: 700, color: COLOR.amber,
+              background: COLOR.amberDim, padding: '4px 12px', borderRadius: 12,
+              border: `1px solid ${COLOR.amber}40`,
+              animation: 'pulse 2s ease-in-out infinite',
+            }}>
+              {totalActionItems} ACTION{totalActionItems !== 1 ? 'S' : ''} REQUIRED
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Team performance table */}
+      {/* Clickable KPI row */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 6, padding: '14px 24px 0' }}>
+        {[
+          {
+            label: 'Pending Sign-Offs',
+            value: pendingPools.length,
+            color: pendingPools.length > 0 ? COLOR.amber : COLOR.green,
+            route: '/balance-pools',
+            icon: '⊘',
+          },
+          {
+            label: 'Write-Offs to Review',
+            value: pendingWriteOffList.length,
+            color: pendingWriteOffList.length > 0 ? COLOR.red : COLOR.green,
+            route: '/exceptions',
+            icon: '₩',
+          },
+          {
+            label: 'SLA Breaches',
+            value: slaBreachedExceptions.length,
+            color: slaBreachedExceptions.length > 0 ? COLOR.red : COLOR.green,
+            route: '/exceptions',
+            icon: '⚠',
+          },
+          {
+            label: 'Active Analysts',
+            value: activeAnalysts,
+            color: COLOR.blue,
+            route: null,
+            icon: '◉',
+          },
+        ].map(kpi => (
+          <div
+            key={kpi.label}
+            role={kpi.route ? 'button' : undefined}
+            tabIndex={kpi.route ? 0 : undefined}
+            onClick={() => kpi.route && navigate(kpi.route)}
+            onKeyDown={e => kpi.route && e.key === 'Enter' && navigate(kpi.route)}
+            style={{
+              textAlign: 'center',
+              padding: '10px 8px',
+              borderRadius: 8,
+              cursor: kpi.route ? 'pointer' : 'default',
+              transition: 'background 0.15s',
+              background: kpi.value > 0 && kpi.route ? `${kpi.color}08` : 'transparent',
+              border: kpi.value > 0 && kpi.route ? `1px solid ${kpi.color}20` : '1px solid transparent',
+            }}
+            onMouseEnter={e => { if (kpi.route) (e.currentTarget as HTMLDivElement).style.background = `${kpi.color}15` }}
+            onMouseLeave={e => { if (kpi.route) (e.currentTarget as HTMLDivElement).style.background = kpi.value > 0 ? `${kpi.color}08` : 'transparent' }}
+          >
+            <p style={{ margin: 0, fontSize: 10, color: COLOR.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>
+              {kpi.label}
+            </p>
+            <p style={{ margin: 0, fontSize: 24, fontWeight: 800, color: kpi.color, letterSpacing: '-0.02em', fontVariantNumeric: 'tabular-nums' }}>
+              {kpi.value}
+            </p>
+            {kpi.route && kpi.value > 0 && (
+              <p style={{ margin: '4px 0 0', fontSize: 10, color: kpi.color, fontWeight: 500 }}>
+                Click to review →
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* ── Action Queue: Pending Sign-Offs ── */}
+      {pendingPools.length > 0 && (
+        <div style={{ padding: '0 24px', marginTop: 14 }}>
+          <div style={{
+            background: 'rgba(0,0,0,0.2)', borderRadius: 8,
+            border: `1px solid ${COLOR.amber}20`, overflow: 'hidden',
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '10px 16px', borderBottom: `1px solid ${COLOR.border}`,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: COLOR.amber, boxShadow: `0 0 6px ${COLOR.amber}` }} />
+                <span style={{ fontSize: 11, fontWeight: 700, color: COLOR.amber, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  Pools Awaiting Your Sign-Off
+                </span>
+              </div>
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={() => navigate('/balance-pools')}
+                onKeyDown={e => e.key === 'Enter' && navigate('/balance-pools')}
+                style={{ fontSize: 11, color: COLOR.blue, cursor: 'pointer', fontWeight: 500 }}
+              >
+                View all in Balance Pools →
+              </span>
+            </div>
+            {pendingPools.slice(0, 5).map(pool => {
+              const isInProof = pool.proofStatus === 'IN_PROOF'
+              const proofColor = isInProof ? COLOR.green : pool.proofStatus === 'OUT_OF_PROOF' ? COLOR.red : COLOR.amber
+              return (
+                <div
+                  key={pool.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => navigate('/balance-pools')}
+                  onKeyDown={e => e.key === 'Enter' && navigate('/balance-pools')}
+                  style={{
+                    display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))',
+                    gap: 12, alignItems: 'center', padding: '8px 16px',
+                    borderBottom: `1px solid ${COLOR.border}`,
+                    cursor: 'pointer', transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={e => ((e.currentTarget as HTMLDivElement).style.background = COLOR.surfaceHover)}
+                  onMouseLeave={e => ((e.currentTarget as HTMLDivElement).style.background = 'transparent')}
+                >
+                  <div>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: COLOR.textPrimary }}>{pool.name}</span>
+                    <span style={{ fontSize: 10, color: COLOR.textMuted, marginLeft: 8 }}>
+                      {new Date(pool.reconDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: proofColor }} />
+                    <span style={{ fontSize: 11, color: proofColor, fontWeight: 600 }}>
+                      {isInProof ? 'In Proof' : pool.proofStatus === 'OUT_OF_PROOF' ? 'Out of Proof' : 'Pending'}
+                    </span>
+                  </div>
+                  <span style={{
+                    fontSize: 12, fontWeight: 600, fontVariantNumeric: 'tabular-nums',
+                    color: pool.variance === 0 ? COLOR.green : COLOR.red, textAlign: 'right',
+                  }}>
+                    {pool.variance === 0 ? '$0.00 ✓' : `$${Math.abs(pool.variance).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  </span>
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, color: COLOR.amber,
+                    background: COLOR.amberDim, padding: '3px 10px', borderRadius: 4,
+                    textAlign: 'center', letterSpacing: '0.04em',
+                  }}>
+                    SIGN OFF →
+                  </span>
+                </div>
+              )
+            })}
+            {pendingPools.length > 5 && (
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => navigate('/balance-pools')}
+                onKeyDown={e => e.key === 'Enter' && navigate('/balance-pools')}
+                style={{ padding: '8px 16px', fontSize: 11, color: COLOR.blue, cursor: 'pointer', textAlign: 'center' }}
+              >
+                + {pendingPools.length - 5} more pools pending sign-off
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Action Queue: Write-Off Requests ── */}
+      {pendingWriteOffList.length > 0 && (
+        <div style={{ padding: '0 24px', marginTop: 10 }}>
+          <div style={{
+            background: 'rgba(0,0,0,0.2)', borderRadius: 8,
+            border: `1px solid ${COLOR.red}20`, overflow: 'hidden',
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '10px 16px', borderBottom: `1px solid ${COLOR.border}`,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: COLOR.red, boxShadow: `0 0 6px ${COLOR.red}` }} />
+                <span style={{ fontSize: 11, fontWeight: 700, color: COLOR.red, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  Write-Off Requests Pending Approval
+                </span>
+              </div>
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={() => navigate('/exceptions')}
+                onKeyDown={e => e.key === 'Enter' && navigate('/exceptions')}
+                style={{ fontSize: 11, color: COLOR.blue, cursor: 'pointer', fontWeight: 500 }}
+              >
+                View in Exceptions →
+              </span>
+            </div>
+            {pendingWriteOffList.slice(0, 4).map(wo => (
+              <div
+                key={wo.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => navigate('/exceptions')}
+                onKeyDown={e => e.key === 'Enter' && navigate('/exceptions')}
+                style={{
+                  display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))',
+                  gap: 12, alignItems: 'center', padding: '8px 16px',
+                  borderBottom: `1px solid ${COLOR.border}`,
+                  cursor: 'pointer', transition: 'background 0.15s',
+                }}
+                onMouseEnter={e => ((e.currentTarget as HTMLDivElement).style.background = COLOR.surfaceHover)}
+                onMouseLeave={e => ((e.currentTarget as HTMLDivElement).style.background = 'transparent')}
+              >
+                <div>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: COLOR.textPrimary, fontFamily: 'monospace' }}>
+                    {wo.item.reference}
+                  </span>
+                  <span style={{ fontSize: 10, color: COLOR.textMuted, marginLeft: 8 }}>
+                    by {wo.requestedBy}
+                  </span>
+                </div>
+                <span style={{
+                  fontSize: 11, color: COLOR.textSecondary, fontWeight: 500,
+                  background: COLOR.surface, padding: '2px 8px', borderRadius: 4,
+                  textAlign: 'center',
+                }}>
+                  {wo.reasonCode.replace(/_/g, ' ')}
+                </span>
+                <span style={{
+                  fontSize: 13, fontWeight: 700, color: COLOR.red,
+                  fontVariantNumeric: 'tabular-nums', textAlign: 'right',
+                }}>
+                  {usd.format(Math.abs(wo.amount))}
+                </span>
+                <span style={{
+                  fontSize: 10, fontWeight: 700, color: COLOR.red,
+                  background: COLOR.redDim, padding: '3px 10px', borderRadius: 4,
+                  textAlign: 'center', letterSpacing: '0.04em',
+                }}>
+                  REVIEW →
+                </span>
+              </div>
+            ))}
+            {pendingWriteOffList.length > 4 && (
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => navigate('/exceptions')}
+                onKeyDown={e => e.key === 'Enter' && navigate('/exceptions')}
+                style={{ padding: '8px 16px', fontSize: 11, color: COLOR.blue, cursor: 'pointer', textAlign: 'center' }}
+              >
+                + {pendingWriteOffList.length - 4} more write-offs pending review
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── SLA Breach Alerts ── */}
+      {slaBreachedExceptions.length > 0 && (
+        <div style={{ padding: '0 24px', marginTop: 10 }}>
+          <div style={{
+            background: 'rgba(0,0,0,0.2)', borderRadius: 8,
+            border: `1px solid ${COLOR.red}30`, overflow: 'hidden',
+          }}>
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '10px 16px', borderBottom: `1px solid ${COLOR.border}`,
+              background: `${COLOR.red}08`,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 12, color: COLOR.red }}>⚠</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: COLOR.red, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                  SLA Breaches — Immediate Attention Required
+                </span>
+              </div>
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={() => navigate('/exceptions')}
+                onKeyDown={e => e.key === 'Enter' && navigate('/exceptions')}
+                style={{ fontSize: 11, color: COLOR.blue, cursor: 'pointer', fontWeight: 500 }}
+              >
+                View all exceptions →
+              </span>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '10px 16px' }}>
+              {slaBreachedExceptions.slice(0, 6).map(exc => (
+                <div
+                  key={exc.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => navigate('/exceptions')}
+                  onKeyDown={e => e.key === 'Enter' && navigate('/exceptions')}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '6px 12px', borderRadius: 6,
+                    background: COLOR.redDim, border: `1px solid ${COLOR.red}30`,
+                    cursor: 'pointer', transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={e => ((e.currentTarget as HTMLDivElement).style.background = `${COLOR.red}25`)}
+                  onMouseLeave={e => ((e.currentTarget as HTMLDivElement).style.background = COLOR.redDim)}
+                >
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: COLOR.red, boxShadow: `0 0 4px ${COLOR.red}` }} />
+                  <span style={{ fontSize: 11, fontWeight: 600, color: COLOR.textPrimary, fontFamily: 'monospace' }}>
+                    {exc.item.reference.slice(0, 20)}
+                  </span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: COLOR.red, fontVariantNumeric: 'tabular-nums' }}>
+                    {usd.format(Math.abs(exc.item.amount))}
+                  </span>
+                  <span style={{ fontSize: 10, color: COLOR.textMuted }}>{exc.item.age}d</span>
+                </div>
+              ))}
+              {slaBreachedExceptions.length > 6 && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => navigate('/exceptions')}
+                  onKeyDown={e => e.key === 'Enter' && navigate('/exceptions')}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 4,
+                    padding: '6px 12px', borderRadius: 6,
+                    background: COLOR.surface, border: `1px solid ${COLOR.border}`,
+                    cursor: 'pointer', fontSize: 11, color: COLOR.blue, fontWeight: 500,
+                  }}
+                >
+                  + {slaBreachedExceptions.length - 6} more
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Approaching SLA Deadlines ── */}
+      {escalatedCases.length > 0 && (
+        <div style={{ padding: '0 24px', marginTop: 10 }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '8px 16px', borderRadius: 8,
+            background: COLOR.amberDim, border: `1px solid ${COLOR.amber}30`,
+          }}>
+            <span style={{ fontSize: 12, color: COLOR.amber }}>⏰</span>
+            <span style={{ fontSize: 11, fontWeight: 600, color: COLOR.amber }}>
+              {escalatedCases.length} exception{escalatedCases.length !== 1 ? 's' : ''} approaching SLA deadline (next 8 hours)
+            </span>
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={() => navigate('/exceptions')}
+              onKeyDown={e => e.key === 'Enter' && navigate('/exceptions')}
+              style={{ marginLeft: 'auto', fontSize: 11, color: COLOR.blue, cursor: 'pointer', fontWeight: 500 }}
+            >
+              Review →
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* ── Team Performance (collapsed) ── */}
       {team.length > 0 && (
-        <div style={{ marginTop: 16, borderTop: `1px solid ${COLOR.border}`, paddingTop: 12 }}>
-          <p style={{ margin: '0 0 8px', fontSize: 10, fontWeight: 600, color: COLOR.textMuted, textTransform: 'uppercase', letterSpacing: '0.07em' }}>
-            Team Performance
-          </p>
+        <div style={{ padding: '12px 24px 16px', marginTop: 8 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px 100px 80px', gap: 0 }}>
-            {/* Table header */}
-            {['Name', 'Items Resolved', 'Avg Time', 'SLA %'].map(h => (
+            {['Analyst', 'Items Resolved', 'Avg Time', 'SLA %'].map(h => (
               <span
                 key={h}
                 style={{
-                  fontSize: 10,
-                  fontWeight: 600,
-                  color: COLOR.textMuted,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.07em',
+                  fontSize: 10, fontWeight: 600, color: COLOR.textMuted,
+                  textTransform: 'uppercase', letterSpacing: '0.07em',
                   padding: '0 8px 6px',
-                  textAlign: h === 'Name' ? 'left' : 'right',
+                  textAlign: h === 'Analyst' ? 'left' : 'right',
                   borderBottom: `1px solid ${COLOR.border}`,
                 }}
               >
                 {h}
               </span>
             ))}
-            {/* Table rows */}
-            {team.map(member => {
+            {team.filter(m => m.role === 'ANALYST').map(member => {
               const sc = slaColor(member.slaCompliance)
               return (
                 <React.Fragment key={member.id}>
                   <span style={{ fontSize: 12, color: COLOR.textPrimary, padding: '7px 8px', borderBottom: `1px solid ${COLOR.border}` }}>
                     {member.name}
-                    <span
-                      style={{
-                        marginLeft: 6,
-                        fontSize: 10,
-                        color: COLOR.textMuted,
-                        background: COLOR.surface,
-                        padding: '1px 5px',
-                        borderRadius: 4,
-                      }}
-                    >
-                      {member.role}
-                    </span>
+                    {member.slaCompliance < 90 && (
+                      <span style={{
+                        marginLeft: 6, fontSize: 9, color: COLOR.red,
+                        background: COLOR.redDim, padding: '1px 5px', borderRadius: 4,
+                        fontWeight: 700,
+                      }}>
+                        AT RISK
+                      </span>
+                    )}
                   </span>
                   <span style={{ fontSize: 12, fontWeight: 600, color: COLOR.textSecondary, padding: '7px 8px', textAlign: 'right', borderBottom: `1px solid ${COLOR.border}`, fontVariantNumeric: 'tabular-nums' }}>
                     {member.itemsResolvedToday}
@@ -659,6 +997,7 @@ function RoleBanner({ activeRole, balancePools, writeOffs, exceptions, team }: R
 // ─── Main Dashboard ───────────────────────────────────────────
 
 export default function Dashboard() {
+  const navigate = useNavigate()
   const kpis: DashboardKPIs = useReconStore(s => s.kpis)
   const contexts: ReconContext[] = useReconStore(s => s.contexts)
   const activeRole: UserRole = useReconStore(s => s.activeRole)
@@ -900,7 +1239,7 @@ export default function Dashboard() {
       style={{
         minHeight: '100vh',
         background: COLOR.bg,
-        padding: '28px 32px',
+        padding: 'clamp(12px, 3vw, 32px)',
         fontFamily:
           "'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
         boxSizing: 'border-box',
@@ -970,25 +1309,19 @@ export default function Dashboard() {
       />
 
       {/* ── Top KPI Stat Cards ─────────────────────────────── */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
-          gap: 16,
-          marginBottom: 20,
-        }}
-      >
+      <div className="dash-kpi-grid">
         {/* Card 1 — Overall Match Rate */}
         <StatCard
           label="Overall Match Rate"
           accent={matchRateColor(overallMatchRate)}
           accentDim={matchRateDimColor(overallMatchRate)}
+          onClick={() => navigate('/matching')}
         >
           <MatchRateRing rate={overallMatchRate} />
         </StatCard>
 
         {/* Card 2 — Total Items */}
-        <StatCard label="Total Items" accent={COLOR.blue} accentDim={COLOR.blueDim}>
+        <StatCard label="Total Items" accent={COLOR.blue} accentDim={COLOR.blueDim} onClick={() => navigate('/items')}>
           <div>
             <p
               style={{
@@ -1052,7 +1385,7 @@ export default function Dashboard() {
         </StatCard>
 
         {/* Card 3 — Pools Status */}
-        <StatCard label="Balance Pools" accent={COLOR.purple} accentDim={COLOR.purpleDim}>
+        <StatCard label="Balance Pools" accent={COLOR.purple} accentDim={COLOR.purpleDim} onClick={() => navigate('/balance-pools')}>
           <div>
             <p
               style={{
@@ -1140,6 +1473,7 @@ export default function Dashboard() {
           label="Open Exceptions"
           accent={exceptionCount > 200 ? COLOR.red : exceptionCount > 100 ? COLOR.amber : COLOR.green}
           accentDim={exceptionCount > 200 ? COLOR.redDim : exceptionCount > 100 ? COLOR.amberDim : COLOR.greenDim}
+          onClick={() => navigate('/exceptions')}
         >
           {(() => {
             const excColor =
@@ -1231,14 +1565,7 @@ export default function Dashboard() {
       </div>
 
       {/* ── Row 2: Match Rate Trend + Context Health ─────────── */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 340px',
-          gap: 16,
-          marginBottom: 20,
-        }}
-      >
+      <div className="dash-charts-row">
         {/* Match Rate Trend Chart */}
         <ChartCard
           title="Match Rate Trend"
@@ -1341,13 +1668,7 @@ export default function Dashboard() {
       </div>
 
       {/* ── Row 3: Aging Buckets + Doughnut + Break Table ────── */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 300px 1fr',
-          gap: 16,
-        }}
-      >
+      <div className="dash-bottom-row">
         {/* Aging Buckets */}
         <ChartCard
           title="Exception Aging Buckets"

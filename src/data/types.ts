@@ -3,15 +3,17 @@
 export type Currency = 'USD' | 'EUR' | 'GBP' | 'JPY' | 'CHF'
 export type ItemSide = 'INTERNAL' | 'EXTERNAL'
 export type ItemStatus = 'UNMATCHED' | 'MATCHED' | 'BREAK' | 'WRITE_OFF' | 'PROPOSED'
-export type MatchPassType = 'EXACT' | 'TOLERANCE' | 'FUZZY' | 'AI_SUGGESTED'
+export type MatchPassType = 'EXACT' | 'TOLERANCE' | 'FUZZY' | 'AI_SUGGESTED' | 'MANUAL'
+export type MatchGroupType = '1:1' | '1:N' | 'N:1' | 'N:N' | 'NET' | 'MANUAL'
 export type ProofStatus = 'IN_PROOF' | 'OUT_OF_PROOF' | 'PENDING'
 export type ReasonCode = 'TIMING' | 'MISSING_TRADE' | 'RATE_DIFFERENCE' | 'COUNTERPARTY_ERROR' | 'FEE_DIFFERENCE' | 'DUPLICATE' | 'UNKNOWN'
-export type UserRole = 'ANALYST' | 'SUPERVISOR'
+export type UserRole = 'ANALYST' | 'SUPERVISOR' | 'AUDITOR'
 export type ContextType = 'CASH' | 'SECURITIES'
 export type SignOffStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
 export type WriteOffStatus = 'PENDING' | 'APPROVED' | 'REJECTED'
 export type CaseStatus = 'OPEN' | 'IN_PROGRESS' | 'PENDING_EXTERNAL' | 'ESCALATED' | 'RESOLVED' | 'CLOSED'
 export type SeverityLevel = 'GREEN' | 'AMBER' | 'RED'
+export type MatchGroupStatus = 'CONFIRMED' | 'PENDING_REVIEW' | 'BROKEN'
 
 // ─── Reconciliation Context ──────────────────────────────────
 
@@ -40,14 +42,43 @@ export interface ReconItem {
   amount: number         // Positive = credit, negative = debit
   status: ItemStatus
   matchId: string | null
+  matchGroupId: string | null  // Links to MatchGroup
   matchPass: MatchPassType | null
   reasonCode: ReasonCode | null
   assignedTo: string | null
   age: number            // Days outstanding
   createdAt: string
+  isCarryForward: boolean  // Carried from prior day
+  carryForwardDays: number // How many days carried
 }
 
-// ─── Match Result ────────────────────────────────────────────
+// ─── Match Group ─────────────────────────────────────────────
+// Central concept: a group of matched items (replaces simple MatchResult for 1:1)
+
+export interface MatchGroup {
+  id: string
+  contextId: string
+  type: MatchGroupType    // 1:1, 1:N, N:1, N:N, NET, MANUAL
+  status: MatchGroupStatus
+  pass: MatchPassType
+  confidence: number      // 0-100
+  internalItems: ReconItem[]
+  externalItems: ReconItem[]
+  internalTotal: number   // Sum of internal amounts
+  externalTotal: number   // Sum of external amounts
+  netDifference: number   // Absolute difference
+  toleranceApplied: number | null
+  fieldsMatched: string[]
+  ruleUsed: string
+  matchedBy: string       // 'AUTO' | user name
+  matchedAt: string       // ISO datetime
+  brokenBy: string | null
+  brokenAt: string | null
+  breakReason: string | null
+  comments: string[]
+}
+
+// ─── Match Result (kept for backward compat with matching engine) ──
 
 export interface MatchResult {
   id: string
@@ -61,6 +92,7 @@ export interface MatchResult {
   toleranceApplied: number | null
   fieldsMatched: string[]
   ruleUsed: string
+  matchGroupId?: string   // Links to parent MatchGroup
 }
 
 // ─── Balance Pool ────────────────────────────────────────────
@@ -159,6 +191,35 @@ export interface AuditEvent {
   user: string
   action: string
   detail: string
+  contextId?: string
+  itemId?: string
+  matchGroupId?: string
+}
+
+// ─── Reconciliation Run ──────────────────────────────────
+
+export interface ReconciliationRun {
+  id: string
+  contextId: string
+  runDate: string        // ISO datetime
+  runBy: string
+  duration: number       // ms
+  totalItems: number
+  matchedItems: number
+  matchRate: number
+  passResults: { pass: MatchPassType; matched: number }[]
+  groupsCreated: number
+}
+
+// ─── CarryForward Summary ────────────────────────────────
+
+export interface CarryForwardSummary {
+  contextId: string
+  contextName: string
+  totalItems: number
+  totalValue: number
+  byAge: { days: string; count: number; value: number }[]
+  byReason: { reason: ReasonCode; count: number; value: number }[]
 }
 
 // ─── User / Team ─────────────────────────────────────────────

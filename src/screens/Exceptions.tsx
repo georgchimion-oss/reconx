@@ -69,16 +69,6 @@ function formatDate(iso: string): string {
   })
 }
 
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZoneName: 'short',
-  })
-}
-
 function getSlaRemaining(deadline: string): { label: string; isBreached: boolean; hoursLeft: number } {
   const now = Date.now()
   const end = new Date(deadline).getTime()
@@ -100,69 +90,149 @@ function reasonCodeLabel(code: ReasonCode): string {
   return REASON_CODE_OPTIONS.find(o => o.value === code)?.label ?? code
 }
 
-// ─── Priority Dot ─────────────────────────────────────────────────────────────
+// ─── Inline dropdown style ────────────────────────────────────────────────────
 
-function PriorityDot({ priority }: { priority: Priority }) {
-  const color = PRIORITY_COLORS[priority]
-  const isCritical = priority === 'CRITICAL'
-
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-      <div
-        style={{
-          width: 10,
-          height: 10,
-          borderRadius: '50%',
-          background: color,
-          boxShadow: isCritical ? `0 0 0 2px ${color}40, 0 0 8px ${color}` : 'none',
-          animation: isCritical ? 'pulse 1.5s infinite' : 'none',
-          flexShrink: 0,
-        }}
-      />
-      <span style={{ fontSize: 11, fontWeight: 700, color, letterSpacing: '0.04em' }}>
-        {priority}
-      </span>
-    </div>
-  )
+const inlineSelectStyle: React.CSSProperties = {
+  background: 'rgba(15,17,23,0.8)',
+  border: '1px solid rgba(255,255,255,0.1)',
+  borderRadius: 5,
+  color: '#cbd5e1',
+  padding: '3px 6px',
+  fontSize: 11,
+  cursor: 'pointer',
+  outline: 'none',
+  fontFamily: 'inherit',
 }
 
-// ─── SLA Status ───────────────────────────────────────────────────────────────
+// ─── SLA Badge ────────────────────────────────────────────────────────────────
 
 function SlaBadge({ deadline, slaBreach }: { deadline: string; slaBreach: boolean }) {
   const { label, isBreached, hoursLeft } = getSlaRemaining(deadline)
   const breached = isBreached || slaBreach
-  const finalHour = !breached && hoursLeft < 1
+  const urgent = !breached && hoursLeft < 4
 
-  const color = breached
-    ? '#ef4444'
-    : hoursLeft < 4
-      ? '#f59e0b'
-      : '#10b981'
+  const color = breached ? '#ef4444' : urgent ? '#f59e0b' : '#10b981'
 
   return (
     <span
-      className={finalHour ? 'pulse-red' : undefined}
       style={{
-        fontSize: 11,
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 5,
+        fontSize: 10,
         fontWeight: 700,
         color,
         background: `${color}15`,
         border: `1px solid ${color}30`,
-        borderRadius: 6,
-        padding: '2px 8px',
-        letterSpacing: '0.04em',
+        borderRadius: 5,
+        padding: '2px 7px',
+        letterSpacing: '0.03em',
         fontVariantNumeric: 'tabular-nums',
         whiteSpace: 'nowrap',
       }}
     >
+      {breached && (
+        <span
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            background: '#ef4444',
+            display: 'inline-block',
+            animation: 'sla-pulse 1s infinite',
+            flexShrink: 0,
+          }}
+        />
+      )}
       {breached ? 'BREACHED' : label}
     </span>
   )
 }
 
-// ─── Expanded Exception Detail ────────────────────────────────────────────────
+// ─── Priority Badge ───────────────────────────────────────────────────────────
 
-interface ExpandedExceptionProps {
+function PriorityBadge({ priority }: { priority: Priority }) {
+  const color = PRIORITY_COLORS[priority]
+  const isCritical = priority === 'CRITICAL'
+
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+        fontSize: 10,
+        fontWeight: 700,
+        color,
+        background: `${color}15`,
+        border: `1px solid ${color}30`,
+        borderRadius: 5,
+        padding: '2px 7px',
+        letterSpacing: '0.04em',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      <span
+        style={{
+          width: 5,
+          height: 5,
+          borderRadius: '50%',
+          background: color,
+          display: 'inline-block',
+          flexShrink: 0,
+          animation: isCritical ? 'sla-pulse 1.5s infinite' : 'none',
+        }}
+      />
+      {priority}
+    </span>
+  )
+}
+
+// ─── Action Icon Button ───────────────────────────────────────────────────────
+
+interface ActionBtnProps {
+  label: string
+  icon: string
+  color: string
+  onClick: () => void
+  active?: boolean
+}
+
+function ActionBtn({ label, icon, color, onClick, active }: ActionBtnProps) {
+  const [hovered, setHovered] = useState(false)
+
+  return (
+    <button
+      title={label}
+      aria-label={label}
+      onClick={e => { e.stopPropagation(); onClick() }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        width: 26,
+        height: 26,
+        borderRadius: 5,
+        border: `1px solid ${active || hovered ? color + '60' : 'rgba(255,255,255,0.08)'}`,
+        background: active || hovered ? `${color}18` : 'rgba(255,255,255,0.03)',
+        color: active || hovered ? color : '#64748b',
+        cursor: 'pointer',
+        fontSize: 12,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        transition: 'all 0.12s',
+        flexShrink: 0,
+        lineHeight: 1,
+      }}
+    >
+      {icon}
+    </button>
+  )
+}
+
+// ─── Exception Card ───────────────────────────────────────────────────────────
+
+interface ExceptionCardProps {
   exception: Exception
   team: { id: string; name: string }[]
   isSupervisor: boolean
@@ -178,7 +248,7 @@ interface ExpandedExceptionProps {
   onResolve: () => void
 }
 
-function ExpandedExceptionDetail({
+function ExceptionCard({
   exception,
   team,
   isSupervisor,
@@ -192,143 +262,263 @@ function ExpandedExceptionDetail({
   onAddNote,
   onAssign,
   onResolve,
-}: ExpandedExceptionProps) {
+}: ExceptionCardProps) {
   const { item } = exception
-  const [writeOffComments, setWriteOffComments] = useState('')
   const [noteText, setNoteText] = useState('')
+  const [writeOffComments, setWriteOffComments] = useState('')
+
   const showWriteOffForm = writeOffFormId === exception.id
   const showEscalatedMsg = escalatedIds.has(exception.id)
+  const isNegative = item.amount < 0
 
-  const inputStyle: React.CSSProperties = {
-    background: 'rgba(26,29,41,0.9)',
-    border: '1px solid rgba(255,255,255,0.15)',
-    borderRadius: 7,
-    color: '#f1f5f9',
-    padding: '6px 12px',
-    fontSize: 12,
-    outline: 'none',
-    width: '100%',
-    boxSizing: 'border-box',
-  }
+  // Show the last 3 notes, most recent first
+  const recentNotes = [...exception.notes].reverse().slice(0, 3)
+
+  const priorityColor = PRIORITY_COLORS[exception.priority]
+  const isCritical = exception.priority === 'CRITICAL'
 
   return (
     <div
       style={{
-        background: 'rgba(10,12,20,0.95)',
-        border: '1px solid rgba(255,255,255,0.08)',
-        borderRadius: 10,
-        padding: 20,
-        marginTop: 2,
+        background: 'rgba(20,22,32,0.85)',
+        border: `1px solid ${isCritical ? 'rgba(248,113,113,0.2)' : 'rgba(255,255,255,0.07)'}`,
+        borderLeft: `3px solid ${priorityColor}`,
+        borderRadius: 8,
+        overflow: 'hidden',
+        transition: 'border-color 0.15s',
       }}
     >
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginBottom: 16 }}>
-        {/* Item Details */}
-        <div>
-          <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10, fontWeight: 600 }}>
-            Item Detail
-          </div>
-          {[
-            { label: 'Reference', value: item.reference },
-            { label: 'Description', value: item.description },
-            { label: 'Counterparty', value: item.counterparty },
-            { label: 'Value Date', value: formatDate(item.valueDate) },
-            { label: 'Amount', value: formatCurrency(item.amount, item.currency) },
-            { label: 'Currency', value: item.currency },
-            { label: 'Side', value: item.side },
-            { label: 'Age', value: `${item.age} days` },
-          ].map(row => (
-            <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-              <span style={{ fontSize: 12, color: '#64748b' }}>{row.label}</span>
-              <span style={{ fontSize: 12, color: '#f1f5f9', fontWeight: 500 }}>{row.value}</span>
-            </div>
-          ))}
-        </div>
+      {/* ── Row 1: Reference | Amount | Priority | SLA | Age ── */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          padding: '8px 12px',
+          borderBottom: '1px solid rgba(255,255,255,0.05)',
+          flexWrap: 'wrap',
+        }}
+      >
+        {/* Reference */}
+        <span
+          style={{
+            fontSize: 12,
+            fontWeight: 700,
+            color: '#3b82f6',
+            fontFamily: 'monospace',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {item.reference}
+        </span>
 
-        {/* Exception Details */}
-        <div>
-          <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10, fontWeight: 600 }}>
-            Exception Detail
-          </div>
-          {[
-            { label: 'Exception ID', value: exception.id },
-            { label: 'Priority', value: exception.priority },
-            { label: 'Reason Code', value: reasonCodeLabel(exception.reasonCode) },
-            { label: 'Assigned To', value: exception.assignedTo },
-            { label: 'Created', value: formatDate(exception.createdAt) },
-            { label: 'SLA Deadline', value: formatDateTime(exception.slaDeadline) },
-            { label: 'SLA Breached', value: exception.slaBreach ? 'Yes' : 'No' },
-          ].map(row => (
-            <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-              <span style={{ fontSize: 12, color: '#64748b' }}>{row.label}</span>
-              <span style={{
-                fontSize: 12,
-                color: row.label === 'SLA Breached' && exception.slaBreach ? '#ef4444' : '#f1f5f9',
-                fontWeight: 500,
-              }}>
-                {row.value}
+        <span style={{ color: 'rgba(255,255,255,0.12)', fontSize: 10 }}>|</span>
+
+        {/* Description (truncated) */}
+        <span
+          style={{
+            fontSize: 11,
+            color: '#64748b',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            maxWidth: 200,
+            flex: '1 1 auto',
+            minWidth: 0,
+          }}
+        >
+          {item.description}
+        </span>
+
+        <span style={{ color: 'rgba(255,255,255,0.12)', fontSize: 10 }}>|</span>
+
+        {/* Amount */}
+        <span
+          style={{
+            fontSize: 12,
+            fontWeight: 700,
+            color: isNegative ? '#f87171' : '#f1f5f9',
+            fontVariantNumeric: 'tabular-nums',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {formatCurrency(item.amount, item.currency)}
+        </span>
+
+        <span style={{ color: 'rgba(255,255,255,0.12)', fontSize: 10 }}>|</span>
+
+        {/* Priority badge */}
+        <PriorityBadge priority={exception.priority} />
+
+        {/* SLA badge */}
+        <SlaBadge deadline={exception.slaDeadline} slaBreach={exception.slaBreach} />
+
+        {/* Age */}
+        <span
+          style={{
+            fontSize: 10,
+            color: item.age > 5 ? '#f59e0b' : '#475569',
+            fontWeight: item.age > 5 ? 700 : 400,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {item.age}d old
+        </span>
+
+        {/* Escalated confirmation pill */}
+        {showEscalatedMsg && (
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              color: '#10b981',
+              background: 'rgba(16,185,129,0.1)',
+              border: '1px solid rgba(16,185,129,0.3)',
+              borderRadius: 5,
+              padding: '2px 8px',
+              marginLeft: 'auto',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Case created
+          </span>
+        )}
+      </div>
+
+      {/* ── Row 2: Reason Code | Assigned To ── */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          padding: '6px 12px',
+          borderBottom: '1px solid rgba(255,255,255,0.04)',
+          flexWrap: 'wrap',
+        }}
+      >
+        <span style={{ fontSize: 10, color: '#475569', whiteSpace: 'nowrap' }}>Reason:</span>
+        <select
+          value={exception.reasonCode}
+          onChange={e => onAssignReasonCode(e.target.value as ReasonCode)}
+          style={inlineSelectStyle}
+        >
+          {REASON_CODE_OPTIONS.map(opt => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+
+        <span style={{ color: 'rgba(255,255,255,0.08)', fontSize: 10 }}>|</span>
+
+        <span style={{ fontSize: 10, color: '#475569', whiteSpace: 'nowrap' }}>Assigned:</span>
+        <select
+          value={exception.assignedTo}
+          onChange={e => onAssign(e.target.value)}
+          style={inlineSelectStyle}
+        >
+          {team.map(member => (
+            <option key={member.id} value={member.name}>{member.name}</option>
+          ))}
+        </select>
+
+        {/* Action buttons — always visible, pushed right */}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
+          <ActionBtn
+            label="Write-Off Request"
+            icon="$"
+            color="#8b5cf6"
+            onClick={onRequestWriteOff}
+            active={showWriteOffForm}
+          />
+          <ActionBtn
+            label="Escalate to Case"
+            icon="↑"
+            color="#ef4444"
+            onClick={onEscalate}
+          />
+          {isSupervisor && (
+            <ActionBtn
+              label="Mark Resolved"
+              icon="✓"
+              color="#10b981"
+              onClick={onResolve}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* ── Row 3: Notes always visible + Add note input ── */}
+      <div
+        style={{
+          padding: '7px 12px 8px',
+          display: 'flex',
+          gap: 12,
+          alignItems: 'flex-start',
+        }}
+      >
+        {/* Notes column */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Label */}
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              color: '#475569',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+              marginBottom: 5,
+            }}
+          >
+            Notes
+            {exception.notes.length > 0 && (
+              <span
+                style={{
+                  marginLeft: 5,
+                  background: 'rgba(59,130,246,0.15)',
+                  color: '#3b82f6',
+                  borderRadius: 10,
+                  padding: '0px 5px',
+                  fontSize: 9,
+                  fontWeight: 700,
+                }}
+              >
+                {exception.notes.length}
               </span>
-            </div>
-          ))}
-
-          {/* Assign To dropdown */}
-          <div style={{ marginTop: 14 }}>
-            <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6, fontWeight: 600 }}>
-              Assign To
-            </div>
-            <select
-              value={exception.assignedTo}
-              onChange={e => onAssign(e.target.value)}
-              style={{
-                background: 'rgba(26,29,41,0.9)',
-                border: '1px solid rgba(255,255,255,0.15)',
-                borderRadius: 7,
-                color: '#f1f5f9',
-                padding: '6px 12px',
-                fontSize: 12,
-                cursor: 'pointer',
-                outline: 'none',
-                width: '100%',
-              }}
-            >
-              {team.map(member => (
-                <option key={member.id} value={member.name}>
-                  {member.name}
-                </option>
-              ))}
-            </select>
+            )}
           </div>
-        </div>
 
-        {/* Notes */}
-        <div>
-          <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10, fontWeight: 600 }}>
-            Notes ({exception.notes.length})
-          </div>
-          {exception.notes.length === 0 ? (
-            <div style={{ fontSize: 12, color: '#475569', fontStyle: 'italic' }}>No notes on this exception.</div>
+          {/* Recent notes list */}
+          {recentNotes.length === 0 ? (
+            <div style={{ fontSize: 11, color: '#334155', fontStyle: 'italic', marginBottom: 5 }}>
+              No notes yet — add one below.
+            </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
-              {exception.notes.map((note, i) => (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 5 }}>
+              {recentNotes.map((note, i) => (
                 <div
                   key={i}
                   style={{
-                    padding: '8px 12px',
-                    background: 'rgba(255,255,255,0.04)',
-                    borderRadius: 7,
-                    border: '1px solid rgba(255,255,255,0.06)',
-                    fontSize: 12,
-                    color: '#cbd5e1',
-                    lineHeight: 1.5,
+                    fontSize: 11,
+                    color: '#94a3b8',
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid rgba(255,255,255,0.05)',
+                    borderRadius: 4,
+                    padding: '3px 8px',
+                    lineHeight: 1.4,
                   }}
                 >
                   {note}
                 </div>
               ))}
+              {exception.notes.length > 3 && (
+                <div style={{ fontSize: 10, color: '#334155', padding: '1px 8px' }}>
+                  +{exception.notes.length - 3} more note{exception.notes.length - 3 !== 1 ? 's' : ''}
+                </div>
+              )}
             </div>
           )}
 
-          {/* Add Note input */}
-          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+          {/* Add note — always visible input */}
+          <div style={{ display: 'flex', gap: 5 }}>
             <input
               type="text"
               value={noteText}
@@ -339,8 +529,18 @@ function ExpandedExceptionDetail({
                   setNoteText('')
                 }
               }}
-              placeholder="Add investigation note..."
-              style={{ ...inputStyle, flex: 1 }}
+              placeholder="Add note... (Enter to save)"
+              style={{
+                flex: 1,
+                background: 'rgba(15,17,23,0.9)',
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 5,
+                color: '#f1f5f9',
+                padding: '4px 8px',
+                fontSize: 11,
+                outline: 'none',
+                fontFamily: 'inherit',
+              }}
             />
             <button
               onClick={() => {
@@ -350,13 +550,13 @@ function ExpandedExceptionDetail({
                 }
               }}
               style={{
-                padding: '6px 12px',
-                borderRadius: 7,
+                padding: '4px 10px',
+                borderRadius: 5,
                 border: 'none',
                 background: '#3b82f6',
                 color: '#fff',
-                fontSize: 12,
-                fontWeight: 600,
+                fontSize: 10,
+                fontWeight: 700,
                 cursor: 'pointer',
                 whiteSpace: 'nowrap',
               }}
@@ -367,340 +567,82 @@ function ExpandedExceptionDetail({
         </div>
       </div>
 
-      {/* Action buttons */}
-      <div
-        style={{
-          display: 'flex',
-          gap: 10,
-          paddingTop: 16,
-          borderTop: '1px solid rgba(255,255,255,0.06)',
-          alignItems: 'flex-start',
-          flexWrap: 'wrap',
-          flexDirection: 'column',
-        }}
-      >
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', width: '100%' }}>
-          <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginRight: 6 }}>
-            Actions:
-          </span>
-
-          {/* Reason Code dropdown */}
-          <select
-            defaultValue={exception.reasonCode}
-            onChange={e => onAssignReasonCode(e.target.value as ReasonCode)}
-            style={{
-              background: 'rgba(26,29,41,0.9)',
-              border: '1px solid rgba(255,255,255,0.15)',
-              borderRadius: 7,
-              color: '#f1f5f9',
-              padding: '6px 12px',
-              fontSize: 12,
-              cursor: 'pointer',
-              outline: 'none',
-            }}
-          >
-            <option value="" disabled>
-              Assign Reason Code
-            </option>
-            {REASON_CODE_OPTIONS.map(opt => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-
-          {/* Request Write-Off */}
-          {Math.abs(item.amount) < 10000 && (
-            <button
-              onClick={onRequestWriteOff}
-              style={{
-                padding: '6px 14px',
-                borderRadius: 7,
-                border: '1px solid rgba(139,92,246,0.4)',
-                background: 'rgba(139,92,246,0.1)',
-                color: '#8b5cf6',
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: 'pointer',
-                letterSpacing: '0.03em',
-                transition: 'background 0.15s',
-              }}
-              onMouseEnter={e => ((e.currentTarget as HTMLButtonElement).style.background = 'rgba(139,92,246,0.2)')}
-              onMouseLeave={e => ((e.currentTarget as HTMLButtonElement).style.background = 'rgba(139,92,246,0.1)')}
-            >
-              Request Write-Off
-            </button>
-          )}
-
-          {/* Escalate */}
-          <button
-            onClick={onEscalate}
-            style={{
-              padding: '6px 14px',
-              borderRadius: 7,
-              border: '1px solid rgba(239,68,68,0.4)',
-              background: 'rgba(239,68,68,0.1)',
-              color: '#ef4444',
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: 'pointer',
-              letterSpacing: '0.03em',
-              transition: 'background 0.15s',
-            }}
-            onMouseEnter={e => ((e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,0.2)')}
-            onMouseLeave={e => ((e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,0.1)')}
-          >
-            Escalate to Case
-          </button>
-
-          {/* Escalated confirmation */}
-          {showEscalatedMsg && (
-            <span
-              style={{
-                fontSize: 12,
-                fontWeight: 600,
-                color: '#10b981',
-                background: 'rgba(16,185,129,0.1)',
-                border: '1px solid rgba(16,185,129,0.3)',
-                borderRadius: 7,
-                padding: '4px 12px',
-              }}
-            >
-              Case created
-            </span>
-          )}
-
-          {/* Resolve — supervisor only */}
-          {isSupervisor && (
-            <button
-              onClick={onResolve}
-              style={{
-                padding: '6px 14px',
-                borderRadius: 7,
-                border: '1px solid rgba(16,185,129,0.4)',
-                background: 'rgba(16,185,129,0.1)',
-                color: '#10b981',
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: 'pointer',
-                letterSpacing: '0.03em',
-                marginLeft: 'auto',
-              }}
-            >
-              Mark Resolved
-            </button>
-          )}
-        </div>
-
-        {/* Write-Off inline form */}
-        {showWriteOffForm && (
-          <div
-            style={{
-              width: '100%',
-              background: 'rgba(139,92,246,0.07)',
-              border: '1px solid rgba(139,92,246,0.25)',
-              borderRadius: 9,
-              padding: '14px 16px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 10,
-            }}
-          >
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#8b5cf6' }}>
-              Write-Off Request — {item.reference}
-            </div>
-            <textarea
-              value={writeOffComments}
-              onChange={e => setWriteOffComments(e.target.value)}
-              placeholder="Reason for write-off..."
-              rows={3}
-              style={{
-                background: 'rgba(10,12,20,0.8)',
-                border: '1px solid rgba(139,92,246,0.3)',
-                borderRadius: 7,
-                color: '#f1f5f9',
-                padding: '8px 12px',
-                fontSize: 12,
-                outline: 'none',
-                resize: 'vertical',
-                fontFamily: 'inherit',
-                lineHeight: 1.5,
-              }}
-            />
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                onClick={() => {
-                  onSubmitWriteOff(writeOffComments)
-                  setWriteOffComments('')
-                }}
-                style={{
-                  padding: '6px 16px',
-                  borderRadius: 7,
-                  border: 'none',
-                  background: '#8b5cf6',
-                  color: '#fff',
-                  fontSize: 12,
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                }}
-              >
-                Submit
-              </button>
-              <button
-                onClick={() => {
-                  onCancelWriteOff()
-                  setWriteOffComments('')
-                }}
-                style={{
-                  padding: '6px 16px',
-                  borderRadius: 7,
-                  border: '1px solid rgba(255,255,255,0.15)',
-                  background: 'transparent',
-                  color: '#94a3b8',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                Cancel
-              </button>
-            </div>
+      {/* ── Write-Off inline form (below card, when open) ── */}
+      {showWriteOffForm && (
+        <div
+          style={{
+            borderTop: '1px solid rgba(139,92,246,0.2)',
+            background: 'rgba(139,92,246,0.05)',
+            padding: '10px 12px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 8,
+          }}
+        >
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#8b5cf6' }}>
+            Write-Off Request — {item.reference} ({formatCurrency(item.amount, item.currency)})
           </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ─── Exception Row ─────────────────────────────────────────────────────────────
-
-interface ExceptionRowProps {
-  exception: Exception
-  index: number
-  isExpanded: boolean
-  team: { id: string; name: string }[]
-  isSupervisor: boolean
-  writeOffFormId: string | null
-  escalatedIds: Set<string>
-  onToggle: () => void
-  onAssignReasonCode: (code: ReasonCode) => void
-  onRequestWriteOff: () => void
-  onCancelWriteOff: () => void
-  onSubmitWriteOff: (comments: string) => void
-  onEscalate: () => void
-  onAddNote: (note: string) => void
-  onAssign: (analystName: string) => void
-  onResolve: () => void
-}
-
-function ExceptionRow({
-  exception,
-  index,
-  isExpanded,
-  team,
-  isSupervisor,
-  writeOffFormId,
-  escalatedIds,
-  onToggle,
-  onAssignReasonCode,
-  onRequestWriteOff,
-  onCancelWriteOff,
-  onSubmitWriteOff,
-  onEscalate,
-  onAddNote,
-  onAssign,
-  onResolve,
-}: ExceptionRowProps) {
-  const { item } = exception
-  const isNegative = item.amount < 0
-
-  return (
-    <>
-      <tr
-        onClick={onToggle}
-        style={{
-          background: isExpanded
-            ? 'rgba(59,130,246,0.06)'
-            : index % 2 === 0
-              ? 'transparent'
-              : 'rgba(255,255,255,0.02)',
-          cursor: 'pointer',
-          borderLeft: isExpanded ? '2px solid #3b82f6' : '2px solid transparent',
-          transition: 'background 0.15s, border-color 0.15s',
-        }}
-        onMouseEnter={e => {
-          if (!isExpanded) (e.currentTarget as HTMLTableRowElement).style.background = 'rgba(255,255,255,0.05)'
-        }}
-        onMouseLeave={e => {
-          if (!isExpanded) {
-            (e.currentTarget as HTMLTableRowElement).style.background =
-              index % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)'
-          }
-        }}
-      >
-        <td style={{ padding: '12px 14px' }}>
-          <PriorityDot priority={exception.priority} />
-        </td>
-        <td style={{ padding: '12px 14px', fontSize: 12, color: '#3b82f6', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
-          {item.reference}
-        </td>
-        <td style={{ padding: '12px 14px', fontSize: 12, color: '#cbd5e1', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {item.description}
-        </td>
-        <td style={{ padding: '12px 14px', fontSize: 12, fontWeight: 600, textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', color: isNegative ? '#ef4444' : '#f1f5f9' }}>
-          {formatCurrency(item.amount, item.currency)}
-        </td>
-        <td style={{ padding: '12px 14px', fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>
-          {item.currency}
-        </td>
-        <td style={{ padding: '12px 14px', fontSize: 12, textAlign: 'center', color: item.age > 5 ? '#f59e0b' : '#94a3b8', fontWeight: item.age > 5 ? 600 : 400 }}>
-          {item.age}d
-        </td>
-        <td style={{ padding: '12px 14px', fontSize: 11, color: '#8b5cf6', fontWeight: 600 }}>
-          {reasonCodeLabel(exception.reasonCode)}
-        </td>
-        <td style={{ padding: '12px 14px', fontSize: 12, color: '#94a3b8' }}>
-          {exception.assignedTo || '—'}
-        </td>
-        <td style={{ padding: '12px 14px', textAlign: 'center' }}>
-          <SlaBadge deadline={exception.slaDeadline} slaBreach={exception.slaBreach} />
-        </td>
-        <td style={{ padding: '12px 8px', textAlign: 'center' }}>
-          <span
+          <textarea
+            value={writeOffComments}
+            onChange={e => setWriteOffComments(e.target.value)}
+            placeholder="Reason for write-off..."
+            rows={2}
             style={{
-              fontSize: 10,
-              color: '#64748b',
-              display: 'inline-block',
-              transform: isExpanded ? 'rotate(180deg)' : 'none',
-              transition: 'transform 0.2s',
+              background: 'rgba(10,12,20,0.8)',
+              border: '1px solid rgba(139,92,246,0.3)',
+              borderRadius: 5,
+              color: '#f1f5f9',
+              padding: '6px 8px',
+              fontSize: 11,
+              outline: 'none',
+              resize: 'vertical',
+              fontFamily: 'inherit',
+              lineHeight: 1.4,
+              width: '100%',
+              boxSizing: 'border-box',
             }}
-          >
-            ▼
-          </span>
-        </td>
-      </tr>
-      {isExpanded && (
-        <tr>
-          <td colSpan={10} style={{ padding: '0 14px 14px' }}>
-            <ExpandedExceptionDetail
-              exception={exception}
-              team={team}
-              isSupervisor={isSupervisor}
-              writeOffFormId={writeOffFormId}
-              escalatedIds={escalatedIds}
-              onAssignReasonCode={onAssignReasonCode}
-              onRequestWriteOff={onRequestWriteOff}
-              onCancelWriteOff={onCancelWriteOff}
-              onSubmitWriteOff={onSubmitWriteOff}
-              onEscalate={onEscalate}
-              onAddNote={onAddNote}
-              onAssign={onAssign}
-              onResolve={onResolve}
-            />
-          </td>
-        </tr>
+          />
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              onClick={() => {
+                onSubmitWriteOff(writeOffComments)
+                setWriteOffComments('')
+              }}
+              style={{
+                padding: '4px 14px',
+                borderRadius: 5,
+                border: 'none',
+                background: '#8b5cf6',
+                color: '#fff',
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              Submit
+            </button>
+            <button
+              onClick={() => {
+                onCancelWriteOff()
+                setWriteOffComments('')
+              }}
+              style={{
+                padding: '4px 14px',
+                borderRadius: 5,
+                border: '1px solid rgba(255,255,255,0.1)',
+                background: 'transparent',
+                color: '#64748b',
+                fontSize: 11,
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
-    </>
+    </div>
   )
 }
 
@@ -727,32 +669,32 @@ function WriteOffQueue({
       style={{
         background: 'rgba(26,29,41,0.7)',
         border: '1px solid rgba(139,92,246,0.25)',
-        borderRadius: 12,
+        borderRadius: 10,
         overflow: 'hidden',
-        marginTop: 24,
+        marginTop: 20,
       }}
     >
       {/* Header */}
       <div
         style={{
-          padding: '14px 20px',
-          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          padding: '10px 16px',
+          borderBottom: '1px solid rgba(255,255,255,0.07)',
           display: 'flex',
           alignItems: 'center',
-          gap: 10,
-          background: 'rgba(139,92,246,0.07)',
+          gap: 8,
+          background: 'rgba(139,92,246,0.06)',
         }}
       >
-        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#8b5cf6' }} />
-        <span style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>Write-Off Queue</span>
+        <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#8b5cf6' }} />
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#f1f5f9' }}>Write-Off Queue</span>
         {pending.length > 0 && (
           <span
             style={{
               background: 'rgba(139,92,246,0.25)',
               color: '#8b5cf6',
               borderRadius: 10,
-              padding: '1px 8px',
-              fontSize: 11,
+              padding: '1px 7px',
+              fontSize: 10,
               fontWeight: 700,
             }}
           >
@@ -760,7 +702,7 @@ function WriteOffQueue({
           </span>
         )}
         {!isSupervisor && (
-          <span style={{ marginLeft: 'auto', fontSize: 11, color: '#64748b', fontStyle: 'italic' }}>
+          <span style={{ marginLeft: 'auto', fontSize: 10, color: '#475569', fontStyle: 'italic' }}>
             Supervisor access required to approve
           </span>
         )}
@@ -768,75 +710,82 @@ function WriteOffQueue({
 
       {/* Pending write-offs */}
       {pending.length > 0 && (
-        <div style={{ padding: '12px 20px' }}>
-          <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10, fontWeight: 600 }}>
+        <div style={{ padding: '10px 16px' }}>
+          <div
+            style={{
+              fontSize: 10,
+              color: '#64748b',
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+              marginBottom: 8,
+              fontWeight: 600,
+            }}
+          >
             Pending Approval
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {pending.map(wo => (
               <div
                 key={wo.id}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 16,
-                  padding: '12px 16px',
-                  background: 'rgba(139,92,246,0.06)',
-                  border: '1px solid rgba(139,92,246,0.15)',
-                  borderRadius: 9,
+                  gap: 14,
+                  padding: '9px 12px',
+                  background: 'rgba(139,92,246,0.05)',
+                  border: '1px solid rgba(139,92,246,0.14)',
+                  borderRadius: 7,
+                  flexWrap: 'wrap',
                 }}
               >
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-                    <div>
-                      <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Reference</div>
-                      <div style={{ fontSize: 12, color: '#3b82f6', fontFamily: 'monospace', fontWeight: 600 }}>
-                        {wo.item?.reference ?? wo.itemId}
-                      </div>
+                <div style={{ flex: 1, display: 'flex', gap: 18, flexWrap: 'wrap' }}>
+                  <div>
+                    <div style={{ fontSize: 9, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Reference</div>
+                    <div style={{ fontSize: 11, color: '#3b82f6', fontFamily: 'monospace', fontWeight: 600 }}>
+                      {wo.item?.reference ?? wo.itemId}
                     </div>
-                    <div>
-                      <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Amount</div>
-                      <div style={{ fontSize: 13, color: '#f1f5f9', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                        {formatCurrency(wo.amount, wo.item?.currency)}
-                      </div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Reason</div>
-                      <div style={{ fontSize: 12, color: '#8b5cf6', fontWeight: 600 }}>
-                        {reasonCodeLabel(wo.reasonCode)}
-                      </div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Requested By</div>
-                      <div style={{ fontSize: 12, color: '#f1f5f9' }}>{wo.requestedBy}</div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Requested At</div>
-                      <div style={{ fontSize: 12, color: '#94a3b8' }}>{formatDate(wo.requestedAt)}</div>
-                    </div>
-                    {wo.comments && (
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Comments</div>
-                        <div style={{ fontSize: 12, color: '#94a3b8', fontStyle: 'italic' }}>{wo.comments}</div>
-                      </div>
-                    )}
                   </div>
+                  <div>
+                    <div style={{ fontSize: 9, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Amount</div>
+                    <div style={{ fontSize: 12, color: '#f1f5f9', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+                      {formatCurrency(wo.amount, wo.item?.currency)}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 9, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Reason</div>
+                    <div style={{ fontSize: 11, color: '#8b5cf6', fontWeight: 600 }}>
+                      {reasonCodeLabel(wo.reasonCode)}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 9, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Requested By</div>
+                    <div style={{ fontSize: 11, color: '#f1f5f9' }}>{wo.requestedBy}</div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 9, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Date</div>
+                    <div style={{ fontSize: 11, color: '#94a3b8' }}>{formatDate(wo.requestedAt)}</div>
+                  </div>
+                  {wo.comments && (
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 9, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Comments</div>
+                      <div style={{ fontSize: 11, color: '#94a3b8', fontStyle: 'italic' }}>{wo.comments}</div>
+                    </div>
+                  )}
                 </div>
 
                 {isSupervisor && (
-                  <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                     <button
                       onClick={() => onReject(wo.id)}
                       style={{
-                        padding: '6px 14px',
-                        borderRadius: 7,
-                        border: '1px solid rgba(239,68,68,0.4)',
-                        background: 'rgba(239,68,68,0.1)',
+                        padding: '4px 12px',
+                        borderRadius: 5,
+                        border: '1px solid rgba(239,68,68,0.35)',
+                        background: 'rgba(239,68,68,0.08)',
                         color: '#ef4444',
-                        fontSize: 12,
+                        fontSize: 11,
                         fontWeight: 700,
                         cursor: 'pointer',
-                        letterSpacing: '0.03em',
                       }}
                     >
                       Reject
@@ -844,15 +793,14 @@ function WriteOffQueue({
                     <button
                       onClick={() => onApprove(wo.id)}
                       style={{
-                        padding: '6px 14px',
-                        borderRadius: 7,
+                        padding: '4px 12px',
+                        borderRadius: 5,
                         border: 'none',
                         background: '#10b981',
                         color: '#fff',
-                        fontSize: 12,
+                        fontSize: 11,
                         fontWeight: 700,
                         cursor: 'pointer',
-                        letterSpacing: '0.03em',
                       }}
                     >
                       Approve
@@ -867,11 +815,25 @@ function WriteOffQueue({
 
       {/* Resolved write-offs */}
       {resolved.length > 0 && (
-        <div style={{ padding: '12px 20px', borderTop: pending.length > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
-          <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10, fontWeight: 600 }}>
+        <div
+          style={{
+            padding: '10px 16px',
+            borderTop: pending.length > 0 ? '1px solid rgba(255,255,255,0.05)' : 'none',
+          }}
+        >
+          <div
+            style={{
+              fontSize: 10,
+              color: '#64748b',
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+              marginBottom: 8,
+              fontWeight: 600,
+            }}
+          >
             Resolved
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             {resolved.map(wo => {
               const isApproved = wo.status === 'APPROVED'
               const color = isApproved ? '#10b981' : '#ef4444'
@@ -881,26 +843,24 @@ function WriteOffQueue({
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: 16,
-                    padding: '10px 14px',
+                    gap: 12,
+                    padding: '7px 12px',
                     background: 'rgba(255,255,255,0.02)',
-                    border: `1px solid ${color}20`,
-                    borderRadius: 8,
+                    border: `1px solid ${color}18`,
+                    borderRadius: 6,
                     opacity: 0.75,
                   }}
                 >
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
-                  <span style={{ fontSize: 12, color: '#94a3b8', fontFamily: 'monospace' }}>
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: color, flexShrink: 0 }} />
+                  <span style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'monospace' }}>
                     {wo.item?.reference ?? wo.itemId}
                   </span>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9', fontVariantNumeric: 'tabular-nums' }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#f1f5f9', fontVariantNumeric: 'tabular-nums' }}>
                     {formatCurrency(wo.amount, wo.item?.currency)}
                   </span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color }}>
-                    {wo.status}
-                  </span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color }}>{wo.status}</span>
                   {wo.approvedBy && (
-                    <span style={{ fontSize: 11, color: '#64748b' }}>
+                    <span style={{ fontSize: 10, color: '#475569' }}>
                       by {wo.approvedBy}
                       {wo.approvedAt ? ` · ${formatDate(wo.approvedAt)}` : ''}
                     </span>
@@ -929,132 +889,135 @@ function CasesSection({
   return (
     <div
       style={{
-        background: 'rgba(26,29,41,0.7)',
-        border: '1px solid rgba(59,130,246,0.25)',
-        borderRadius: 12,
-        overflow: 'hidden',
-        marginTop: 24,
+        marginTop: 20,
       }}
     >
-      {/* Header */}
+      {/* Divider with label */}
       <div
         style={{
-          padding: '14px 20px',
-          borderBottom: '1px solid rgba(255,255,255,0.08)',
           display: 'flex',
           alignItems: 'center',
           gap: 10,
-          background: 'rgba(59,130,246,0.07)',
+          marginBottom: 12,
         }}
       >
-        <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#3b82f6' }} />
-        <span style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>Cases</span>
-        <span
+        <div style={{ flex: 1, height: 1, background: 'rgba(59,130,246,0.2)' }} />
+        <div
           style={{
-            background: 'rgba(59,130,246,0.2)',
-            color: '#3b82f6',
-            borderRadius: 10,
-            padding: '1px 8px',
-            fontSize: 11,
-            fontWeight: 700,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 7,
+            padding: '4px 12px',
+            background: 'rgba(59,130,246,0.08)',
+            border: '1px solid rgba(59,130,246,0.2)',
+            borderRadius: 20,
           }}
         >
-          {cases.length}
-        </span>
+          <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#3b82f6' }} />
+          <span style={{ fontSize: 11, fontWeight: 700, color: '#3b82f6' }}>Cases</span>
+          <span
+            style={{
+              background: 'rgba(59,130,246,0.2)',
+              color: '#3b82f6',
+              borderRadius: 10,
+              padding: '0 5px',
+              fontSize: 10,
+              fontWeight: 700,
+            }}
+          >
+            {cases.length}
+          </span>
+        </div>
+        <div style={{ flex: 1, height: 1, background: 'rgba(59,130,246,0.2)' }} />
       </div>
 
       {/* Cases list */}
-      <div style={{ padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {cases.map(c => {
           const statusColor = CASE_STATUS_COLORS[c.status]
+          const priorityColor = PRIORITY_COLORS[c.priority as Priority]
           return (
             <div
               key={c.id}
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: 16,
-                padding: '14px 16px',
-                background: 'rgba(255,255,255,0.02)',
-                border: '1px solid rgba(255,255,255,0.07)',
-                borderRadius: 10,
+                gap: 12,
+                padding: '9px 12px',
+                background: 'rgba(20,22,32,0.85)',
+                border: '1px solid rgba(255,255,255,0.06)',
+                borderLeft: `3px solid ${statusColor}`,
+                borderRadius: 7,
                 flexWrap: 'wrap',
               }}
             >
               {/* Case ID */}
-              <div style={{ minWidth: 120 }}>
-                <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Case ID</div>
-                <div style={{ fontSize: 12, color: '#3b82f6', fontFamily: 'monospace', fontWeight: 600 }}>{c.id}</div>
+              <div style={{ minWidth: 110 }}>
+                <div style={{ fontSize: 9, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 1 }}>Case ID</div>
+                <div style={{ fontSize: 11, color: '#3b82f6', fontFamily: 'monospace', fontWeight: 700 }}>{c.id}</div>
               </div>
 
-              {/* Status badge */}
+              {/* Status dropdown */}
               <div>
-                <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Status</div>
-                <span
+                <div style={{ fontSize: 9, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Status</div>
+                <select
+                  value={c.status}
+                  onChange={e => onUpdateStatus(c.id, e.target.value as CaseStatus)}
                   style={{
-                    fontSize: 11,
-                    fontWeight: 700,
+                    ...inlineSelectStyle,
                     color: statusColor,
-                    background: `${statusColor}18`,
-                    border: `1px solid ${statusColor}35`,
-                    borderRadius: 6,
-                    padding: '2px 8px',
-                    letterSpacing: '0.03em',
+                    borderColor: `${statusColor}30`,
+                    background: `${statusColor}0d`,
                   }}
                 >
-                  {c.status.replace('_', ' ')}
-                </span>
+                  {CASE_STATUS_OPTIONS.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
               </div>
 
-              {/* Assigned To */}
+              {/* Priority */}
               <div>
-                <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Assigned To</div>
-                <div style={{ fontSize: 12, color: '#f1f5f9' }}>{c.assignedTo || '—'}</div>
+                <div style={{ fontSize: 9, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Priority</div>
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: priorityColor,
+                    background: `${priorityColor}15`,
+                    border: `1px solid ${priorityColor}25`,
+                    borderRadius: 4,
+                    padding: '1px 6px',
+                  }}
+                >
+                  {c.priority}
+                </span>
               </div>
 
               {/* Item Reference */}
               <div>
-                <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Item Ref</div>
-                <div style={{ fontSize: 12, color: '#94a3b8', fontFamily: 'monospace' }}>{c.item.reference}</div>
+                <div style={{ fontSize: 9, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 1 }}>Item Ref</div>
+                <div style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'monospace' }}>{c.item.reference}</div>
               </div>
 
               {/* Amount */}
               <div>
-                <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Amount</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9', fontVariantNumeric: 'tabular-nums' }}>
+                <div style={{ fontSize: 9, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 1 }}>Amount</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#f1f5f9', fontVariantNumeric: 'tabular-nums' }}>
                   {formatCurrency(c.amount, c.item.currency)}
                 </div>
               </div>
 
               {/* Created */}
               <div>
-                <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Created</div>
-                <div style={{ fontSize: 12, color: '#94a3b8' }}>{formatDate(c.createdAt)}</div>
+                <div style={{ fontSize: 9, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 1 }}>Created</div>
+                <div style={{ fontSize: 11, color: '#64748b' }}>{formatDate(c.createdAt)}</div>
               </div>
 
-              {/* Update Status */}
+              {/* Assigned To */}
               <div style={{ marginLeft: 'auto' }}>
-                <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Update Status</div>
-                <select
-                  value={c.status}
-                  onChange={e => onUpdateStatus(c.id, e.target.value as CaseStatus)}
-                  style={{
-                    background: 'rgba(26,29,41,0.9)',
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    borderRadius: 7,
-                    color: '#f1f5f9',
-                    padding: '5px 10px',
-                    fontSize: 12,
-                    cursor: 'pointer',
-                    outline: 'none',
-                  }}
-                >
-                  {CASE_STATUS_OPTIONS.map(opt => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                <div style={{ fontSize: 9, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 1 }}>Assigned</div>
+                <div style={{ fontSize: 11, color: '#f1f5f9' }}>{c.assignedTo || '—'}</div>
               </div>
             </div>
           )
@@ -1106,8 +1069,8 @@ function ExceptionSummary({ exceptions, writeOffs }: { exceptions: Exception[]; 
       style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(4, 1fr)',
-        gap: 12,
-        marginBottom: 24,
+        gap: 10,
+        marginBottom: 18,
       }}
     >
       {stats.map(stat => (
@@ -1115,18 +1078,34 @@ function ExceptionSummary({ exceptions, writeOffs }: { exceptions: Exception[]; 
           key={stat.label}
           style={{
             background: 'rgba(26,29,41,0.7)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: 12,
-            padding: '16px 20px',
+            border: '1px solid rgba(255,255,255,0.07)',
+            borderRadius: 9,
+            padding: '12px 16px',
           }}
         >
-          <div style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+          <div
+            style={{
+              fontSize: 10,
+              color: '#475569',
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+              marginBottom: 6,
+            }}
+          >
             {stat.label}
           </div>
-          <div style={{ fontSize: 28, fontWeight: 800, color: stat.color, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+          <div
+            style={{
+              fontSize: 24,
+              fontWeight: 800,
+              color: stat.color,
+              fontVariantNumeric: 'tabular-nums',
+              lineHeight: 1,
+            }}
+          >
             {stat.value}
           </div>
-          <div style={{ fontSize: 11, color: '#475569', marginTop: 6 }}>{stat.subtext}</div>
+          <div style={{ fontSize: 10, color: '#334155', marginTop: 5 }}>{stat.subtext}</div>
         </div>
       ))}
     </div>
@@ -1155,7 +1134,6 @@ export default function Exceptions() {
   const updateCaseStatus = useReconStore(s => s.updateCaseStatus)
 
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>('ALL')
-  const [expandedId, setExpandedId] = useState<string | null>(null)
   // Track which exception has the write-off form open
   const [writeOffFormId, setWriteOffFormId] = useState<string | null>(null)
   // Track which exceptions just had a case created (for 2-second confirmation)
@@ -1201,14 +1179,6 @@ export default function Exceptions() {
     return counts
   }, [contextExceptions])
 
-  const handleToggle = (id: string) => {
-    setExpandedId(prev => (prev === id ? null : id))
-    // Close write-off form if switching rows
-    if (writeOffFormId && writeOffFormId !== id) {
-      setWriteOffFormId(null)
-    }
-  }
-
   const handleRequestWriteOff = (excId: string) => {
     setWriteOffFormId(prev => (prev === excId ? null : excId))
   }
@@ -1234,51 +1204,32 @@ export default function Exceptions() {
     }, 2000)
   }
 
-  const thStyle: React.CSSProperties = {
-    padding: '10px 14px',
-    fontSize: 11,
-    fontWeight: 700,
-    color: '#64748b',
-    textTransform: 'uppercase',
-    letterSpacing: '0.06em',
-    borderBottom: '1px solid rgba(255,255,255,0.08)',
-    whiteSpace: 'nowrap',
-  }
-
   return (
-    <div style={{ background: '#0f1117', minHeight: '100vh', padding: '24px 28px', color: '#f1f5f9' }}>
-      {/* CSS keyframes for critical priority pulse */}
+    <div style={{ background: '#0f1117', minHeight: '100vh', padding: '20px 24px', color: '#f1f5f9' }}>
+      {/* CSS keyframes */}
       <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 1; box-shadow: 0 0 0 2px rgba(239,68,68,0.4), 0 0 8px rgba(239,68,68,0.7); }
-          50% { opacity: 0.7; box-shadow: 0 0 0 4px rgba(239,68,68,0.2), 0 0 14px rgba(239,68,68,0.4); }
+        @keyframes sla-pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.4; transform: scale(1.3); }
         }
       `}</style>
 
-      {/* Page header */}
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#f1f5f9', margin: 0 }}>Exceptions</h1>
-        <p style={{ fontSize: 13, color: '#64748b', margin: '4px 0 0' }}>
-          Break management, SLA tracking, and write-off approvals
-        </p>
-      </div>
-
       {/* Top controls */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 18, alignItems: 'center', flexWrap: 'wrap' }}>
         <select
           value={activeContextId}
           onChange={e => setActiveContext(e.target.value)}
           style={{
             background: 'rgba(26,29,41,0.9)',
-            border: '1px solid rgba(255,255,255,0.12)',
-            borderRadius: 8,
+            border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: 7,
             color: '#f1f5f9',
-            padding: '8px 14px',
-            fontSize: 13,
+            padding: '6px 12px',
+            fontSize: 12,
             fontWeight: 500,
             cursor: 'pointer',
             outline: 'none',
-            minWidth: 260,
+            minWidth: 240,
           }}
         >
           {contexts.map(ctx => (
@@ -1291,24 +1242,24 @@ export default function Exceptions() {
         {/* Role indicator */}
         <div
           style={{
-            padding: '6px 14px',
-            borderRadius: 8,
-            border: isSupervisor ? '1px solid rgba(16,185,129,0.3)' : '1px solid rgba(255,255,255,0.1)',
-            background: isSupervisor ? 'rgba(16,185,129,0.08)' : 'rgba(255,255,255,0.04)',
+            padding: '5px 12px',
+            borderRadius: 7,
+            border: isSupervisor ? '1px solid rgba(16,185,129,0.25)' : '1px solid rgba(255,255,255,0.08)',
+            background: isSupervisor ? 'rgba(16,185,129,0.07)' : 'rgba(255,255,255,0.03)',
             display: 'flex',
             alignItems: 'center',
-            gap: 7,
+            gap: 6,
           }}
         >
           <div
             style={{
-              width: 7,
-              height: 7,
+              width: 6,
+              height: 6,
               borderRadius: '50%',
               background: isSupervisor ? '#10b981' : '#64748b',
             }}
           />
-          <span style={{ fontSize: 12, fontWeight: 600, color: isSupervisor ? '#10b981' : '#94a3b8' }}>
+          <span style={{ fontSize: 11, fontWeight: 600, color: isSupervisor ? '#10b981' : '#94a3b8' }}>
             {isSupervisor ? 'Supervisor' : 'Analyst'} role
           </span>
         </div>
@@ -1321,11 +1272,11 @@ export default function Exceptions() {
       <div
         style={{
           display: 'flex',
-          gap: 4,
-          marginBottom: 16,
+          gap: 3,
+          marginBottom: 14,
           background: 'rgba(26,29,41,0.5)',
-          borderRadius: 10,
-          padding: 4,
+          borderRadius: 8,
+          padding: 3,
           width: 'fit-content',
           border: '1px solid rgba(255,255,255,0.06)',
         }}
@@ -1333,34 +1284,32 @@ export default function Exceptions() {
         {PRIORITY_TABS.map(tab => {
           const isActive = priorityFilter === tab.key
           const count = priorityCounts[tab.key] ?? 0
-          const priorityColor = tab.key !== 'ALL'
-            ? PRIORITY_COLORS[tab.key as Priority]
-            : '#64748b'
+          const priorityColor = tab.key !== 'ALL' ? PRIORITY_COLORS[tab.key as Priority] : '#64748b'
 
           return (
             <button
               key={tab.key}
               onClick={() => setPriorityFilter(tab.key)}
               style={{
-                padding: '6px 14px',
-                borderRadius: 7,
+                padding: '5px 12px',
+                borderRadius: 6,
                 border: 'none',
                 cursor: 'pointer',
-                fontSize: 12,
+                fontSize: 11,
                 fontWeight: isActive ? 700 : 500,
-                background: isActive ? 'rgba(59,130,246,0.15)' : 'transparent',
-                color: isActive ? '#3b82f6' : '#94a3b8',
-                transition: 'all 0.15s',
+                background: isActive ? 'rgba(59,130,246,0.14)' : 'transparent',
+                color: isActive ? '#3b82f6' : '#64748b',
+                transition: 'all 0.12s',
                 display: 'flex',
                 alignItems: 'center',
-                gap: 6,
+                gap: 5,
               }}
             >
               {tab.key !== 'ALL' && (
                 <div
                   style={{
-                    width: 6,
-                    height: 6,
+                    width: 5,
+                    height: 5,
                     borderRadius: '50%',
                     background: priorityColor,
                     flexShrink: 0,
@@ -1370,13 +1319,12 @@ export default function Exceptions() {
               {tab.label}
               <span
                 style={{
-                  background: `${priorityColor}20`,
+                  background: `${priorityColor}1a`,
                   color: priorityColor,
-                  padding: '1px 6px',
+                  padding: '0 5px',
                   borderRadius: 100,
-                  fontSize: 10,
+                  fontSize: 9,
                   fontWeight: 700,
-                  marginLeft: 5,
                 }}
               >
                 {count}
@@ -1386,83 +1334,63 @@ export default function Exceptions() {
         })}
       </div>
 
-      {/* Exception table */}
+      {/* Exception Queue header */}
       <div
         style={{
-          background: 'rgba(26,29,41,0.7)',
-          border: '1px solid rgba(255,255,255,0.1)',
-          borderRadius: 12,
-          overflow: 'hidden',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 8,
         }}
       >
+        <span style={{ fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          Exception Queue
+        </span>
+        <span style={{ fontSize: 11, color: '#334155' }}>
+          {filteredExceptions.length} exception{filteredExceptions.length !== 1 ? 's' : ''}
+          {priorityFilter !== 'ALL' ? ` · ${priorityFilter}` : ''}
+        </span>
+      </div>
+
+      {/* Exception cards */}
+      {filteredExceptions.length === 0 ? (
         <div
           style={{
-            padding: '14px 20px',
-            borderBottom: '1px solid rgba(255,255,255,0.08)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
+            padding: '32px 0',
+            textAlign: 'center',
+            color: '#334155',
+            fontSize: 12,
+            background: 'rgba(26,29,41,0.4)',
+            borderRadius: 8,
+            border: '1px solid rgba(255,255,255,0.05)',
           }}
         >
-          <span style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>Exception Queue</span>
-          <span style={{ fontSize: 12, color: '#64748b' }}>
-            {filteredExceptions.length} exception{filteredExceptions.length !== 1 ? 's' : ''}
-            {priorityFilter !== 'ALL' ? ` · ${priorityFilter}` : ''}
-          </span>
+          {priorityFilter === 'ALL'
+            ? 'No exceptions found for this context.'
+            : `No ${priorityFilter.toLowerCase()} exceptions.`}
         </div>
-
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: 'rgba(0,0,0,0.2)' }}>
-                <th style={thStyle}>Priority</th>
-                <th style={thStyle}>Reference</th>
-                <th style={thStyle}>Description</th>
-                <th style={{ ...thStyle, textAlign: 'right' }}>Amount</th>
-                <th style={{ ...thStyle, textAlign: 'center' }}>CCY</th>
-                <th style={{ ...thStyle, textAlign: 'center' }}>Age</th>
-                <th style={thStyle}>Reason Code</th>
-                <th style={thStyle}>Assigned To</th>
-                <th style={{ ...thStyle, textAlign: 'center' }}>SLA Status</th>
-                <th style={{ width: 28 }} />
-              </tr>
-            </thead>
-            <tbody>
-              {filteredExceptions.length === 0 ? (
-                <tr>
-                  <td colSpan={10} style={{ padding: 40, textAlign: 'center', color: '#475569', fontSize: 13 }}>
-                    {priorityFilter === 'ALL'
-                      ? 'No exceptions found for this context.'
-                      : `No ${priorityFilter.toLowerCase()} exceptions.`}
-                  </td>
-                </tr>
-              ) : (
-                filteredExceptions.map((exc, idx) => (
-                  <ExceptionRow
-                    key={exc.id}
-                    exception={exc}
-                    index={idx}
-                    isExpanded={expandedId === exc.id}
-                    team={team}
-                    isSupervisor={isSupervisor}
-                    writeOffFormId={writeOffFormId}
-                    escalatedIds={escalatedIds}
-                    onToggle={() => handleToggle(exc.id)}
-                    onAssignReasonCode={(code) => assignReasonCode(exc.id, code)}
-                    onRequestWriteOff={() => handleRequestWriteOff(exc.id)}
-                    onCancelWriteOff={handleCancelWriteOff}
-                    onSubmitWriteOff={(comments) => handleSubmitWriteOff(exc.id, comments)}
-                    onEscalate={() => handleEscalate(exc.id)}
-                    onAddNote={(note) => addNote(exc.id, note)}
-                    onAssign={(name) => assignException(exc.id, name)}
-                    onResolve={() => resolveException(exc.id)}
-                  />
-                ))
-              )}
-            </tbody>
-          </table>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {filteredExceptions.map(exc => (
+            <ExceptionCard
+              key={exc.id}
+              exception={exc}
+              team={team}
+              isSupervisor={isSupervisor}
+              writeOffFormId={writeOffFormId}
+              escalatedIds={escalatedIds}
+              onAssignReasonCode={(code) => assignReasonCode(exc.id, code)}
+              onRequestWriteOff={() => handleRequestWriteOff(exc.id)}
+              onCancelWriteOff={handleCancelWriteOff}
+              onSubmitWriteOff={(comments) => handleSubmitWriteOff(exc.id, comments)}
+              onEscalate={() => handleEscalate(exc.id)}
+              onAddNote={(note) => addNote(exc.id, note)}
+              onAssign={(name) => assignException(exc.id, name)}
+              onResolve={() => resolveException(exc.id)}
+            />
+          ))}
         </div>
-      </div>
+      )}
 
       {/* Write-Off Queue */}
       <WriteOffQueue
